@@ -144,6 +144,7 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 - **Commit 2:** `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1).
 - **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` — SHA `150c881` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente).
 - **Commit 4:** `docs: record commit SHA for third governance fix` — SHA `afcecf0` (documental — registra el SHA del commit 3, que solo podía conocerse una vez creado; sin cambios de lógica ni de contenido sensible).
+- **Commit 5:** `docs: finalize Phase 01 evidence report with green workflow result` — SHA `7177187` (documental — cierra el ciclo de corrección con el resultado verde confirmado sobre `afcecf0`; sin cambios de lógica ni de contenido sensible). Workflow ejecutado también en verde sobre este commit: [Run 30765160331](https://github.com/carlitos-tech/Centinela/actions/runs/30765160331), conclusión `success`. Este es el HEAD actual de la rama al cierre del ciclo de corrección.
 
 ### Resultado del workflow
 
