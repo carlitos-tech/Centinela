@@ -1,0 +1,122 @@
+[
+  {
+    "code": "LAM-001",
+    "name": "Lámpara Aurora",
+    "category": "Iluminación",
+    "description": "Lámpara de mesa con luz cálida regulable, ideal para sala o alcoba.",
+    "price": 89000,
+    "availability": 2,
+    "features": ["Luz cálida regulable en 3 niveles", "Base de cerámica", "Cable textil de 1.8 m", "Bombillo LED incluido"],
+    "useCases": ["Sala", "Alcoba", "Escritorio de lectura"],
+    "warnings": ["No sumergir en agua", "Uso exclusivo en interiores"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha LAM-001 (dato de demostración)"
+  },
+  {
+    "code": "LAM-002",
+    "name": "Lámpara Solstice",
+    "category": "Iluminación",
+    "description": "Lámpara de piso de diseño minimalista con pantalla de tela.",
+    "price": 125000,
+    "availability": 1,
+    "features": ["Pantalla de tela color crudo", "Altura 140 cm", "Base trípode en madera"],
+    "useCases": ["Sala", "Estudio"],
+    "warnings": ["Existencias reducidas"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha LAM-002 (dato de demostración)"
+  },
+  {
+    "code": "COC-001",
+    "name": "Organizador de Especias Girasol",
+    "category": "Cocina",
+    "description": "Organizador giratorio de 3 niveles para especias y condimentos.",
+    "price": 45000,
+    "availability": 2,
+    "features": ["3 niveles giratorios", "Acero inoxidable", "Diámetro 25 cm"],
+    "useCases": ["Cocinas pequeñas", "Alacenas"],
+    "warnings": ["Peso máximo recomendado 4 kg"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha COC-001 (dato de demostración)"
+  },
+  {
+    "code": "COC-002",
+    "name": "Set de Contenedores Herméticos Nube",
+    "category": "Cocina",
+    "description": "Juego de 5 contenedores herméticos apilables para despensa.",
+    "price": 98000,
+    "availability": 2,
+    "features": ["5 piezas apilables", "Cierre hermético", "Aptos para congelador"],
+    "useCases": ["Organización de despensa", "Cocinas pequeñas"],
+    "warnings": ["No apto para microondas"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha COC-002 (dato de demostración)"
+  },
+  {
+    "code": "COC-003",
+    "name": "Escurridor Plegable CocinaFácil",
+    "category": "Cocina",
+    "description": "Escurridor de platos plegable, ahorra espacio en meseras pequeñas.",
+    "price": 62000,
+    "availability": 2,
+    "features": ["Plegable", "Estructura en acero inoxidable", "Bandeja recolectora incluida"],
+    "useCases": ["Cocinas pequeñas", "Apartamentos"],
+    "warnings": [],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha COC-003 (dato de demostración)"
+  },
+  {
+    "code": "COC-004",
+    "name": "Isla Auxiliar Compacta Menta",
+    "category": "Cocina",
+    "description": "Isla auxiliar compacta con ruedas y espacio de almacenamiento.",
+    "price": 320000,
+    "availability": 2,
+    "features": ["Ruedas con freno", "Repisa inferior de almacenamiento", "Superficie en madera maciza"],
+    "useCases": ["Cocinas medianas", "Preparación de alimentos"],
+    "warnings": ["Requiere ensamble"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha COC-004 (dato de demostración)"
+  },
+  {
+    "code": "ORG-001",
+    "name": "Caja Organizadora Modular Trío",
+    "category": "Organización",
+    "description": "Set de 3 cajas modulares apilables para closet o despensa.",
+    "price": 55000,
+    "availability": 2,
+    "features": ["3 tamaños apilables", "Tapa transparente", "Asas reforzadas"],
+    "useCases": ["Closet", "Despensa", "Cocinas pequeñas"],
+    "warnings": [],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha ORG-001 (dato de demostración)"
+  },
+  {
+    "code": "DEC-001",
+    "name": "Espejo Decorativo Redondo Luna",
+    "category": "Decoración",
+    "description": "Espejo circular con marco delgado en metal dorado.",
+    "price": 140000,
+    "availability": 2,
+    "features": ["Diámetro 60 cm", "Marco en metal", "Sistema de anclaje incluido"],
+    "useCases": ["Sala", "Recibidor"],
+    "warnings": ["Frágil: manipular con cuidado"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha DEC-001 (dato de demostración)"
+  },
+  {
+    "code": "BAN-001",
+    "name": "Set de Toallas Algodón Nube",
+    "category": "Baño",
+    "description": "Juego de 4 toallas de algodón de secado rápido.",
+    "price": 78000,
+    "availability": 2,
+    "features": ["4 piezas", "100% algodón", "Secado rápido"],
+    "useCases": ["Baño principal", "Baño de visitas"],
+    "warnings": [],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha BAN-001 (dato de demostración)"
+  },
+  {
+    "code": "MUE-001",
+    "name": "Banco Auxiliar Nórdico Pino",
+    "category": "Muebles",
+    "description": "Banco auxiliar de madera de pino, estilo nórdico.",
+    "price": 210000,
+    "availability": 0,
+    "features": ["Madera de pino maciza", "Altura 45 cm", "Acabado natural"],
+    "useCases": ["Sala", "Alcoba"],
+    "warnings": ["Producto agotado temporalmente"],
+    "source": "Catálogo ficticio NovaCasa S.A.S. — Ficha MUE-001 (dato de demostración)"
+  }
+]

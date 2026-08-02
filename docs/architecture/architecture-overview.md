@@ -22,10 +22,14 @@ Proyecto → Agentes → Plugins → Skills → Artifacts
 
 | Componente | Carpeta | Estado |
 |------------|---------|--------|
-| Backend (.NET, Clean Architecture) | `src/` | Sin código funcional (pendiente de fase) |
-| Frontend (Chat Web) | `web/` | Sin código funcional (pendiente de fase) |
+| Backend (.NET, Clean Architecture) | `src/` | Fase 02: walking skeleton local implementado ([PR #4](https://github.com/carlitos-tech/Centinela/pull/4), pendiente de aprobación) |
+| Frontend (Chat Web) | `web/` | Fase 02: walking skeleton local implementado ([PR #4](https://github.com/carlitos-tech/Centinela/pull/4), pendiente de aprobación) |
 | Infraestructura (Bicep) | `infra/` | Sin plantillas funcionales (pendiente de fase) |
 | Base de datos | `database/` | Sin scripts funcionales (pendiente de fase) |
+
+### Implementación real de la Fase 02
+
+La Fase 02 implementa un único agente (`CustomerServiceOrchestrator`) y un único plugin (`CustomerServicePlugin`, con 7 Skills), operando enteramente en memoria y contra datos ficticios locales (`src/Centinela.Infrastructure/Data/catalog.json`, `policies.json`). No existen todavía otros agentes o plugins: cualquier referencia a componentes de fases posteriores es solo planeación, no implementación. Ver [`docs/evidence/phase-02-walking-skeleton-report.md`](../evidence/phase-02-walking-skeleton-report.md) para el detalle completo (mapeo de reglas antialucinación, pruebas, escenarios verificados).
 
 ## Administración de infraestructura
 
@@ -33,7 +37,7 @@ Azure CLI como mecanismo principal de administración; Bicep como mecanismo decl
 
 ## Modelo de IA
 
-Microsoft Foundry es el proveedor candidato principal, sujeto a validación de disponibilidad. `FakeModelGateway` sirve como contingencia funcional mientras no exista un proveedor validado. Ningún modelo se selecciona o despliega sin aprobación humana explícita (ver [ADR-003](adr/ADR-003-model-gateway.md)).
+Microsoft Foundry es el proveedor candidato principal, sujeto a validación de disponibilidad. En la Fase 02, `FakeModelGateway` (`src/Centinela.Infrastructure/Gateways/FakeModelGateway.cs`) es la **única implementación registrada** de `IModelGateway`: no llama a ningún servicio de IA real, no usa tokens ni claves, y solo aplica plantillas fijas sobre hechos extraídos del catálogo/políticas locales. Ningún modelo de IA real se selecciona o despliega sin aprobación humana explícita (ver [ADR-003](adr/ADR-003-model-gateway.md)).
 
 ## Seguridad
 

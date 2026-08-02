@@ -1,0 +1,15 @@
+@Centinela.Api_HostAddress = http://localhost:5299
+
+GET {{Centinela.Api_HostAddress}}/health
+Accept: application/json
+
+###
+
+POST {{Centinela.Api_HostAddress}}/api/chat
+Content-Type: application/json
+
+{
+  "message": "¿Cuánto cuesta la Lámpara Aurora?"
+}
+
+###

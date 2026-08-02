@@ -4,7 +4,9 @@ Plataforma multiagente de atención al cliente con inteligencia artificial, cons
 
 ## Estado del proyecto
 
-En construcción por fases. Fase actual: **Fase 01 — Gobierno del repositorio**.
+En construcción por fases. **Fase 02 — Walking skeleton local implementada y pendiente de aprobación humana** ([Pull Request #4](https://github.com/carlitos-tech/Centinela/pull/4), sin fusionar). Issue de la fase: [#3](https://github.com/carlitos-tech/Centinela/issues/3).
+
+La Fase 02 entrega un recorrido completo **totalmente local**: Chat Web (Angular) → API (.NET) → `CustomerServiceOrchestrator` → `CustomerServicePlugin` → Skills → `FakeModelGateway` → catálogo/políticas ficticias de NovaCasa S.A.S. → respuesta fundamentada con citación de fuentes → traza de ejecución. **No usa Azure, no usa una base de datos real y no llama a ningún proveedor de IA real** — `FakeModelGateway` es una implementación local, determinista y sin dependencias externas de `IModelGateway`, usada como contingencia de desarrollo mientras no exista un proveedor de IA validado y autorizado (ver [ADR-003](docs/architecture/adr/ADR-003-model-gateway.md)). Detalle completo en el [reporte de evidencia de la Fase 02](docs/evidence/phase-02-walking-skeleton-report.md).
 
 ## Empresa de referencia
 
@@ -17,6 +19,83 @@ Proyecto → Agentes → Plugins → Skills → Artifacts
 ```
 
 Ver [`docs/architecture/architecture-overview.md`](docs/architecture/architecture-overview.md) para el detalle completo.
+
+## Ejecutar el walking skeleton local (Fase 02)
+
+### Requisitos
+
+- [.NET SDK 10](https://dotnet.microsoft.com/download) (verificado con `dotnet --version` → `10.0.302`).
+- [Node.js 24.x](https://nodejs.org/) y npm 11.x (verificado con `node -v` → `v24.13.1`, `npm -v` → `11.8.0`).
+- Angular CLI se usa vía `npx`/`npm run`; no requiere instalación global.
+
+### Restaurar dependencias
+
+```bash
+# Backend
+dotnet restore Centinela.slnx
+
+# Frontend
+cd web/centinela-web
+npm install
+```
+
+### Iniciar la API (puerto 5299)
+
+Desde la raíz del repositorio, **sin necesidad de establecer `ASPNETCORE_URLS` manualmente** — el puerto está fijado en `src/Centinela.Api/Properties/launchSettings.json`:
+
+```bash
+dotnet run --project src/Centinela.Api
+```
+
+La API queda disponible en `http://localhost:5299`.
+
+### Iniciar el Chat Web (puerto 4200)
+
+En otra terminal, **después de que la API esté arriba** (el frontend depende de la API para responder):
+
+```bash
+cd web/centinela-web
+npm start
+```
+
+El Chat Web queda disponible en `http://localhost:4200`.
+
+### URLs y verificación
+
+- Chat Web: `http://localhost:4200`
+- Health check de la API: `http://localhost:5299/health`
+
+### Ejemplos de consultas para probar en el Chat Web
+
+- `¿Cuánto cuesta la Lámpara Aurora?` — precio, con fuente citada.
+- `¿Hay disponibilidad de la Lámpara Aurora?` — disponibilidad.
+- `¿Qué características tiene la Lámpara Aurora?` — características.
+- `¿Cuál es la política de devoluciones?` — política local.
+- `Necesito algo para la cocina con presupuesto de 150.000` — recomendación con candidatos del catálogo.
+- `Recomiéndame un escritorio gamer con presupuesto de 100.000` — sin coincidencias en el catálogo local: escala a atención humana, sin inventar productos.
+- `¿Tienen escritorios gamer disponibles?` — producto inexistente: escala a atención humana.
+- `Estoy muy molesto, el producto llegó dañado y es un reclamo` — queja: escala a atención humana con resumen para el humano.
+
+### Ejecutar las pruebas backend
+
+```bash
+dotnet test Centinela.slnx --configuration Release
+```
+
+### Ejecutar las pruebas frontend
+
+```bash
+cd web/centinela-web
+npm test -- --watch=false
+```
+
+### Nota sobre la IA usada en esta fase
+
+`FakeModelGateway` **no es Claude, no es Microsoft Foundry y no es ningún modelo de IA real**. Es una implementación local y determinista que aplica plantillas fijas sobre hechos extraídos del catálogo/políticas locales, sin llamadas de red ni tokens. La selección de un proveedor de IA real requiere aprobación humana explícita previa (ver [ADR-003](docs/architecture/adr/ADR-003-model-gateway.md)).
+
+### Nota sobre Azure
+
+Esta fase **no usa Azure**: no se ejecutó ningún comando `az`, no se creó ni modificó ningún recurso de Azure, y no se tocó ningún archivo Bicep. Toda la persistencia es en memoria o en archivos JSON locales versionados como datos ficticios.
 
 ## Gobierno del proyecto
 
