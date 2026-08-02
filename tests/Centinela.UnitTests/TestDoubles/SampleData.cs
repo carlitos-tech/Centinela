@@ -15,7 +15,7 @@ public static class SampleData
         Price = 89000m,
         Availability = ProductAvailability.InStock,
         Features = ["Luz cálida", "Base regulable"],
-        UseCases = ["Escritorio", "Mesa de noche"],
+        UseCases = ["Escritorio de lectura", "Mesa de noche"],
         Warnings = [],
         Source = "Catálogo local NovaCasa S.A.S. - LAM-001",
     };

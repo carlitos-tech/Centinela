@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Centinela.Application.Common;
 
@@ -31,6 +32,23 @@ public static class TextNormalizer
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
+    /// <summary>
+    /// Indica si <paramref name="normalizedText"/> (ya normalizado con <see cref="Normalize"/>)
+    /// contiene alguna de las <paramref name="keywords"/> como palabra o frase completa. Usa
+    /// límites de palabra para evitar falsos positivos por coincidencia de subcadena arbitraria
+    /// (p. ej. que "apagó" -> "apago" no coincida con la palabra clave "pago").
+    /// </summary>
     public static bool ContainsAny(string normalizedText, IEnumerable<string> keywords)
-        => keywords.Any(keyword => normalizedText.Contains(Normalize(keyword), StringComparison.Ordinal));
+        => keywords.Any(keyword => ContainsWholeWordOrPhrase(normalizedText, Normalize(keyword)));
+
+    private static bool ContainsWholeWordOrPhrase(string normalizedText, string normalizedKeyword)
+    {
+        if (normalizedKeyword.Length == 0)
+        {
+            return false;
+        }
+
+        var pattern = $@"(?<!\w){Regex.Escape(normalizedKeyword)}(?!\w)";
+        return Regex.IsMatch(normalizedText, pattern);
+    }
 }

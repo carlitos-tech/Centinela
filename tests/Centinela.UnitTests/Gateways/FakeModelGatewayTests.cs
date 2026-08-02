@@ -32,6 +32,14 @@ public class FakeModelGatewayTests
     }
 
     [Fact]
+    public void ClassifyIntent_DoesNotMatchPolicyKeyword_AsArbitrarySubstring()
+    {
+        var result = _gateway.ClassifyIntent("La lámpara se apagó, ¿qué hago?");
+
+        Assert.Equal(CustomerIntent.Unknown, result);
+    }
+
+    [Fact]
     public void SummarizeForHumanHandoff_DoesNotDuplicateTrailingPeriod()
     {
         var summary = _gateway.SummarizeForHumanHandoff(
