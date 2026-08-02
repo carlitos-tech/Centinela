@@ -11,7 +11,7 @@
 
 ## Resultado
 
-**PASS CON OBSERVACIONES**, en proceso de corrección tras revisión automática del Pull Request. Ver sección "Ciclo de corrección post-revisión" y "Observaciones y decisiones registradas". El resultado definitivo de la fase queda condicionado a que el workflow de gobierno se ejecute en verde sobre el commit corrector y a la aprobación humana explícita del Pull Request.
+**PASS CON OBSERVACIONES**. El ciclo de corrección post-revisión quedó cerrado: el workflow de gobierno se ejecutó en verde sobre el commit `afcecf0` ([Run 30765074177](https://github.com/carlitos-tech/Centinela/actions/runs/30765074177), conclusión `success`). Ver sección "Ciclo de corrección post-revisión" y "Observaciones y decisiones registradas". El Pull Request #2 permanece **abierto y sin fusionar**; el cierre de la fase (merge del PR, cierre del issue #1) requiere aprobación humana explícita, que aún no se ha otorgado.
 
 ## Bootstrap de Git
 
@@ -142,7 +142,8 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 **Corrección:** se reescribió el ejemplo para describir el formato de ruta en prosa, sin incluir ninguna cadena que coincida con el patrón de detección. Se re-ejecutó la validación local completa tras el cambio, confirmando `0 coincidencias` en las cuatro categorías genéricas.
 
 - **Commit 2:** `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1).
-- **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente). SHA: `150c881`.
+- **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` — SHA `150c881` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente).
+- **Commit 4:** `docs: record commit SHA for third governance fix` — SHA `afcecf0` (documental — registra el SHA del commit 3, que solo podía conocerse una vez creado; sin cambios de lógica ni de contenido sensible).
 
 ### Resultado del workflow
 
@@ -150,12 +151,12 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 |---|---|---|
 | `179fc65` (commit 1) | **failure** | Detección correcta de una autorreferencia en el propio reporte de evidencia (ver "Segundo hallazgo" arriba). No es un fallo del mecanismo de escaneo; confirma que el escaneo corregido detecta coincidencias reales sin ocultarlas. |
 | `1869e02` (commit 2) | **failure** | El texto añadido para documentar el primer hallazgo volvió a citar literalmente la cadena de ejemplo que coincide con el patrón, dentro de la propia narrativa del hallazgo. Nuevamente, detección correcta del escaneo, no un fallo de su lógica. |
-| commit 3 (segundo complemento) | _pendiente de registrar tras el push — se completa con la URL y la conclusión (`success`/`failure`) antes de considerar cerrado el ciclo de corrección_ | |
+| `afcecf0` (commits 3 y 4, empujados juntos) | **success** | [Run 30765074177](https://github.com/carlitos-tech/Centinela/actions/runs/30765074177). Todos los pasos del workflow, incluido el escaneo de secretos y datos sensibles, pasan en verde. No se ejecutó un run independiente para `150c881` porque ambos commits se empujaron en un mismo `git push`; GitHub Actions valida el estado final del HEAD de la rama. |
 
 ### Estado del comentario de revisión
 
 - **Comentario:** [id `3700117477`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700117477), de `chatgpt-codex-connector[bot]`, sobre `.github/workflows/governance.yml:132`.
-- **Estado:** _pendiente de respuesta y de marcar como resuelto — se actualiza una vez que el workflow se ejecute en verde sobre el commit 2._
+- **Estado:** respondido tras confirmar el workflow en verde sobre `afcecf0` (ver [Run 30765074177](https://github.com/carlitos-tech/Centinela/actions/runs/30765074177)); intento de marcar el hilo como resuelto registrado a continuación.
 
 ## Validación local (equivalente al workflow, ejecutada durante el ciclo de corrección)
 
