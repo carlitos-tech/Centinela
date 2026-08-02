@@ -9,9 +9,9 @@ Construir, como demostración de hackathon, una plataforma multiagente de atenci
 - **Canal único:** Chat Web. No se agregan canales adicionales (WhatsApp, correo, voz u otros) sin una fase dedicada y autorización explícita.
 - **Dominio:** atención al cliente conversacional sobre catálogo y procesos ficticios de NovaCasa S.A.S.
 - **Datos:** exclusivamente ficticios. Ningún dato real de clientes, empresas, productos, transacciones o personas se introduce en ninguna fase.
-- **Proveedor de IA:** **Microsoft Foundry** es el candidato principal, sujeto a validación de disponibilidad en la región/suscripción del proyecto y a **aprobación humana explícita previa** antes de cualquier selección o despliegue de modelo. Mientras no exista un proveedor validado y aprobado, el desarrollo y las pruebas funcionales avanzan mediante `FakeModelGateway`, una implementación de contingencia que satisface el contrato `IModelGateway` sin depender de un proveedor real.
-- **Persistencia:** Azure SQL como motor de base de datos, administrado mediante migraciones versionadas; forma parte del alcance del proyecto (no de esta fase de gobierno).
-- **Retención de datos:** máximo 30 días para datos generados durante la demostración (conversaciones, logs de aplicación), salvo evidencia de fase, que se conserva de forma indefinida en `docs/evidence/`.
+- **Proveedor de IA:** **Microsoft Foundry** es el candidato principal, sujeto a validación de disponibilidad en la región/suscripción del proyecto, a que quepa dentro del presupuesto del proyecto y a **aprobación humana explícita previa** antes de cualquier selección o despliegue de modelo. Mientras no exista un proveedor validado y aprobado, el desarrollo y las pruebas funcionales avanzan mediante `FakeModelGateway`, una implementación de contingencia que satisface el contrato `IModelGateway` sin depender de un proveedor real.
+- **Persistencia:** Azure SQL es obligatorio como motor de base de datos, administrado mediante Entity Framework Core y migraciones versionadas.
+- **Retención de datos:** máximo 30 días para datos operativos generados durante la demostración (conversaciones, logs de aplicación), salvo evidencia de fase, que se conserva de forma indefinida en `docs/evidence/`.
 - **Tiempo de respuesta objetivo:** máximo 10 segundos por interacción conversacional en el flujo principal del Chat Web.
 - **Presupuesto máximo:** USD 50 para todo el proyecto.
 - **Región Azure principal:** East US 2. **Región de contingencia:** Central US, si East US 2 no tiene capacidad o disponibilidad de los servicios requeridos.
@@ -31,60 +31,157 @@ Esta compuerta de aprobación entre fases aplica a **todas** las fases listadas 
 
 ### Fase 00 — Preflight
 
-Verificación de prerrequisitos del entorno de desarrollo (herramientas, acceso a Azure CLI, acceso a GitHub, funcionamiento del proxy de trazabilidad) antes de tocar el repositorio de forma sustantiva. **Resultado:** PASS CON OBSERVACIONES; pendientes trasladados a fases posteriores (permisos y cuotas de Azure, disponibilidad regional, disponibilidad de Microsoft Foundry, selección de modelos de IA/embeddings, estimación de costo detallada, confirmación operativa de exclusividad del canal Chat Web).
+Verificación de prerrequisitos del entorno de desarrollo: herramientas, funcionamiento del proxy de trazabilidad, acceso a GitHub y acceso a Azure CLI. Sin creación de recursos. **Resultado histórico:** PASS CON OBSERVACIONES; pendientes trasladados a fases posteriores (permisos y cuotas de Azure, disponibilidad regional, disponibilidad de Microsoft Foundry, selección de modelos de IA/embeddings, estimación de costo detallada, confirmación operativa de exclusividad del canal Chat Web).
 
 ### Fase 01 — Gobierno del repositorio
 
-Establecimiento de la estructura documental, plantillas de GitHub, `CLAUDE.md` raíz y por carpeta, Architecture Decision Records iniciales, protección de ramas, funciones de seguridad básicas de GitHub y un workflow de validación de gobierno (no de CI/CD de aplicación). No incluye código funcional ni recursos de Azure. **Compuerta de aprobación:** aprobación humana del Pull Request de gobierno antes de fusionar y antes de iniciar la Fase 02.
+Establecimiento de la estructura documental, plantillas de GitHub, `CLAUDE.md` raíz y por carpeta, Architecture Decision Records iniciales, protección de ramas, funciones de seguridad básicas de GitHub y un workflow de validación de gobierno (no de CI/CD de aplicación). Sin código funcional ni recursos de Azure. **Compuerta de aprobación:** aprobación humana del Pull Request de gobierno antes de fusionar y antes de iniciar la Fase 02.
 
-### Fase 02 — Fundamentos de dominio y arquitectura
+### Fase 02 — Walking skeleton local
 
-Definición del esqueleto de Clean Architecture (capas de dominio, aplicación, infraestructura, presentación) para la solución, sin integraciones externas reales todavía. Incluye las interfaces de abstracción (`IModelGateway`, `IEmbeddingGateway`) y su implementación de contingencia `FakeModelGateway`, siguiendo SOLID, DRY y KISS. **Resultado esperado:** solución compilable con estructura de proyecto y pruebas unitarias mínimas, sin conexión a Azure. **Compuerta de aprobación:** aprobación humana del PR de fundamentos de arquitectura.
+Primer flujo funcional extremo a extremo, ejecutándose **enteramente en local, sin depender de Azure**:
 
-### Fase 03 — Infraestructura como código (Bicep) y bootstrap de Azure
+- Backend .NET.
+- Frontend Angular.
+- Customer Service Orchestrator mínimo.
+- Customer Service Plugin mínimo.
+- `FakeModelGateway` como proveedor de IA de esta fase.
+- Catálogo ficticio local (sin base de datos gestionada todavía).
+- Flujo completo: Chat Web → API → orquestador → catálogo → respuesta → traza.
 
-Definición de plantillas Bicep para los recursos de Azure requeridos por el MVP (grupo de recursos, base de datos, servicios de mensajería/orquestación según se determine), validadas con `bicep build` y `az deployment ... validate`, y ejecutadas primero en modo `what-if`. Ningún recurso se crea sin aprobación humana explícita previa. **Resultado esperado:** infraestructura base desplegada en East US 2 (o Central US como contingencia), dentro del presupuesto de USD 50, con evidencia de `what-if` y despliegue real. **Compuerta de aprobación:** aprobación humana explícita antes de cualquier `apply` real y antes de fusionar el PR de infraestructura.
+**Resultado esperado:** el flujo conversacional mínimo funciona de punta a punta en el entorno local del desarrollador, con trazabilidad básica del recorrido agente/plugin. **Compuerta de aprobación:** aprobación humana del PR del walking skeleton.
 
-### Fase 04 — Capa de datos y migraciones
+### Fase 03 — Azure CLI Command Gateway e infraestructura como código
 
-Modelado de datos ficticios de NovaCasa S.A.S. sobre Azure SQL, con migraciones versionadas y reproducibles. Sin datos reales de ninguna empresa o persona en ningún script o semilla de datos. **Resultado esperado:** esquema de base de datos desplegado y migrado de forma reproducible, con datos de prueba enteramente ficticios. **Compuerta de aprobación:** aprobación humana del PR de capa de datos.
+Construcción de la capa de abstracción tipada y segura sobre Azure CLI, y de las plantillas declarativas de infraestructura:
 
-### Fase 05 — Orquestación multiagente
+- Gateway tipado y seguro para Azure CLI (no se construyen comandos de forma libre o improvisada).
+- Allowlist de comandos permitidos.
+- Bloqueo de operaciones destructivas.
+- Redacción de secretos en salidas y logs.
+- Scripts de soporte en PowerShell/Bash.
+- Módulos Bicep y sus parámetros.
+- Validación (`bicep build` / `az deployment ... validate`) y ejecución en modo `what-if`.
 
-Implementación de la capa de agentes según la jerarquía `Proyecto → Agentes → Plugins → Skills → Artifacts`, consumiendo `IModelGateway`/`IEmbeddingGateway` (inicialmente contra `FakeModelGateway` si el proveedor de IA aprobado aún no está disponible). **Resultado esperado:** orquestación funcional de al menos un agente de atención al cliente end-to-end en un entorno controlado (sin UI todavía). **Compuerta de aprobación:** aprobación humana del PR de orquestación.
+**No se crea ningún recurso de Azure hasta que exista aprobación humana explícita.** **Compuerta de aprobación:** aprobación humana del PR del gateway e IaC, y aprobación humana explícita adicional antes de cualquier `apply` real en una fase posterior.
 
-### Fase 06 — Plugins y Skills del dominio
+### Fase 04 — Bootstrap Azure DEV
 
-Desarrollo de los plugins y skills específicos del caso de uso de NovaCasa S.A.S. (consultas de catálogo, procesos de atención ficticios), siguiendo la jerarquía de arquitectura y sin introducir capas adicionales sin una ADR. **Resultado esperado:** conjunto mínimo de plugins/skills necesarios para el guion de demostración, con pruebas significativas. **Compuerta de aprobación:** aprobación humana del PR de plugins/skills.
+Primer despliegue real de infraestructura, exclusivamente en el entorno de **desarrollo (dev)**:
 
-### Fase 07 — Chat Web (frontend y API de conversación)
+- Azure SQL, Storage, Key Vault, observabilidad y cómputo mínimo.
+- Región principal East US 2; Central US como contingencia si no hay capacidad.
+- Microsoft Foundry y Azure AI Search se incorporan **solo si** están disponibles, caben dentro del presupuesto de USD 50 y son aprobados explícitamente por el desarrollador.
+- Ejecución de `what-if` y aprobación humana explícita antes del despliegue real.
 
-Implementación del único canal del MVP: una interfaz de Chat Web conectada a la orquestación de agentes mediante una API de conversación. **Resultado esperado:** flujo conversacional completo, extremo a extremo, con tiempo de respuesta objetivo máximo de 10 segundos por interacción. **Compuerta de aprobación:** aprobación humana del PR de Chat Web.
+**Resultado esperado:** infraestructura base de dev desplegada y verificable, dentro del presupuesto del proyecto. **Compuerta de aprobación:** aprobación humana antes del `apply` real y antes de fusionar el PR de bootstrap.
 
-### Fase 08 — Integración, pruebas end-to-end y endurecimiento de seguridad
+### Fase 05 — Datos y conocimiento
 
-Pruebas de integración y end-to-end sobre el flujo completo, revisión de reglas de seguridad (`docs/governance/security-rules.md`), escaneo de secretos y datos sensibles, y verificación de que ningún dato real haya sido introducido en ninguna fase anterior. **Resultado esperado:** suite de pruebas significativa pasando en verde, sin umbrales de cobertura reducidos artificialmente, y reporte de seguridad sin hallazgos abiertos de severidad alta. **Compuerta de aprobación:** aprobación humana del PR de endurecimiento.
+Modelado de datos y base de conocimiento ficticios de NovaCasa S.A.S.:
 
-### Fase 09 — Preparación de la demostración
+- Azure SQL como motor de persistencia.
+- Entity Framework Core para el acceso a datos.
+- Migraciones versionadas y reproducibles.
+- Seed de datos idempotente y enteramente ficticio: productos, precios, disponibilidad, características y políticas.
+- Documentos de soporte en Excel, Word y PDF (ficticios).
+- Blob Storage para binarios; metadatos y trazabilidad de esos binarios en Azure SQL.
+- Fragmentación de documentos, embeddings y Azure AI Search, sujeto a disponibilidad y aprobación.
+- Diseño orientado a evitar respuestas inventadas: respuestas fundamentadas en las fuentes almacenadas, con referencia a esas fuentes.
 
-Ejecución del guion de demostración (`docs/demo/demo-script-initial.md`) contra el entorno desplegado, validación del `demo-scorecard.md`, y activación del `contingency-plan.md` si algún componente no está disponible el día de la demostración. **Resultado esperado:** demostración ensayada y reproducible, con plan de contingencia probado. **Compuerta de aprobación:** aprobación humana antes de considerar el entorno "listo para demo".
+**Compuerta de aprobación:** aprobación humana del PR de datos y conocimiento.
 
-### Fase 10 — Evidencia final y cierre del proyecto
+### Fase 06 — Customer Service MVP
 
-Consolidación de toda la evidencia de fases (`docs/evidence/`), verificación de que ningún dato real, secreto, ruta local o identificador completo de Azure quedó versionado en ningún punto del historial, y cierre formal de los issues de fase abiertos. **Resultado esperado:** repositorio y entorno de Azure en un estado final auditable, con evidencia completa y trazable desde la Fase 00. **Compuerta de aprobación:** aprobación humana explícita de cierre del proyecto.
+Capacidades conversacionales centrales del agente de atención al cliente:
 
-## Restricciones transversales (aplican a todas las fases)
+- Detección de intención.
+- Consulta de catálogo y de políticas.
+- Recomendaciones basadas en restricciones del cliente.
+- Tono de marca configurable.
+- Trazabilidad de agentes, plugins, skills y fuentes consultadas en cada respuesta.
+- Escalamiento a atención humana ante reclamos, clientes molestos, consultas fuera de catálogo, falta de información o baja confianza de la respuesta.
+- Resumen automático de la conversación para que el cliente no tenga que repetirla al escalar.
+- Objetivo máximo de respuesta: 10 segundos por interacción.
 
-- Ningún dato, usuario, producto, documento o conversación real se introduce en ninguna fase; todo es ficticio (NovaCasa S.A.S.).
-- Azure CLI es el mecanismo principal de administración de recursos; Bicep es el mecanismo declarativo de IaC. No se crean recursos manualmente fuera de Bicep salvo bootstrap explícitamente autorizado.
-- No se eliminan recursos, no se cambian roles RBAC y no se despliega a producción sin aprobación humana explícita.
-- No se selecciona ni se despliega ningún modelo de IA sin aprobación humana explícita previa; no se presenta Foundry, Claude o servicios de embeddings como disponibles en la aplicación hasta que su disponibilidad sea validada explícitamente.
-- Presupuesto máximo del proyecto: USD 50. Región principal: East US 2. Región de contingencia: Central US.
-- Retención máxima de datos operativos generados por la demostración: 30 días. La evidencia de fase en `docs/evidence/` se conserva de forma indefinida.
-- Tiempo de respuesta objetivo máximo del flujo conversacional: 10 segundos.
+**Compuerta de aprobación:** aprobación humana del PR del MVP de atención al cliente.
+
+### Fase 07 — Artifacts, onboarding y atención humana
+
+Superficie de uso para el cliente final y para el equipo de atención humana:
+
+- Chat Web como único canal del MVP.
+- Panel administrativo.
+- Bandeja de conversaciones escaladas.
+- Asignación, respuesta humana y resolución de conversaciones escaladas.
+- Carga de catálogo y de políticas.
+- Configuración del tono de marca.
+- Dashboard operacional y visualización de trazabilidad.
+- Onboarding reproducible para una pyme (ficticia).
+
+**Compuerta de aprobación:** aprobación humana del PR de artifacts, onboarding y atención humana.
+
+### Fase 08 — Platform Deployment Orchestrator
+
+Orquestador de despliegue de la plataforma, que **solo** interactúa con Azure a través del Azure CLI Command Gateway construido en la Fase 03:
+
+- Análisis de la solución y del entorno objetivo.
+- Generación de un plan de despliegue tipado.
+- Validación de dependencias y permisos antes de ejecutar.
+- Invocación exclusiva del Azure CLI Command Gateway para cualquier operación sobre Azure (sin comandos Azure libres o improvisados).
+- Despliegue de base de datos, backend y frontend.
+- Health checks y capacidad de rollback.
+- Reporte de despliegue.
+
+**Compuerta de aprobación:** aprobación humana del PR del orquestador de despliegue, y aprobación humana explícita antes de cualquier despliegue real que este orquestador ejecute.
+
+### Fase 09 — CI/CD, seguridad y scorecard
+
+Endurecimiento del pipeline de entrega y medición objetiva de calidad:
+
+- GitHub Actions para compilación y pruebas.
+- Escaneo de secretos y de dependencias.
+- Validación de plantillas Bicep en el pipeline.
+- Autenticación Azure mediante OIDC, si corresponde (sin credenciales de larga duración en el repositorio).
+- Evidencias de cada ejecución del pipeline.
+- Golden set de preguntas de referencia para evaluar al agente.
+- Métricas de precisión de precios, disponibilidad, calidad de recomendaciones, tasa de handoff a humano, trazabilidad, latencia y groundedness (fundamentación en fuentes) de las respuestas.
+
+**Compuerta de aprobación:** aprobación humana del PR de CI/CD, seguridad y scorecard.
+
+### Fase 10 — Endurecimiento y demo
+
+Cierre del proyecto y preparación de la demostración final:
+
+- Pruebas end-to-end sobre el flujo completo.
+- Revisión de seguridad.
+- Prueba de rollback.
+- Datos ficticios definitivos para la demo.
+- Demostración ejecutada sobre el entorno Azure DEV.
+- Plan de contingencia local usando `FakeModelGateway` si algún componente de Azure no está disponible el día de la demo.
+- Video corto de respaldo de la demostración.
+- Guion ajustado a una presentación de 3 minutos.
+- Consolidación final de toda la evidencia de fases.
+
+**Compuerta de aprobación:** aprobación humana explícita de cierre del proyecto.
+
+## Requisitos transversales (aplican a todas las fases)
+
+- Fases estrictamente secuenciales, cada una con aprobación humana explícita antes de iniciar y antes de fusionar su Pull Request.
+- Empresa, productos, usuarios y conversaciones completamente ficticios (NovaCasa S.A.S.); ningún dato real se introduce en ninguna fase.
+- Chat Web como único canal implementado en el MVP.
+- Microsoft Foundry sujeto a disponibilidad, presupuesto y aprobación explícita del desarrollador; no se presenta como disponible en la aplicación hasta que su disponibilidad sea validada.
+- `FakeModelGateway` como contingencia mientras no exista un proveedor de IA aprobado.
+- Azure SQL obligatorio como motor de persistencia.
+- Presupuesto máximo del proyecto: USD 50.
+- Retención operativa máxima de datos generados por la demostración: 30 días. La evidencia de fase en `docs/evidence/` se conserva de forma indefinida.
+- Región Azure principal: East US 2. Región de contingencia: Central US.
+- Azure CLI como mecanismo principal ("caballo de batalla") de las operaciones sobre Azure; los comandos no se construyen de forma libre o improvisada.
+- Bicep como mecanismo declarativo de infraestructura como código.
+- No se eliminan recursos ni se cambian roles RBAC sin aprobación humana explícita.
 - Todo cambio funcional relevante incluye pruebas significativas; no se bajan umbrales de cobertura para hacer pasar pruebas.
 - Nunca se trabaja directamente sobre `main` o `develop`; se sigue el flujo de ramas y Pull Requests descrito en `docs/governance/branching-strategy.md` y `CONTRIBUTING.md`.
 
 ## Nota sobre el origen de este documento
 
-Este plan es una versión actualizada y saneada del plan de construcción del proyecto. No reproduce nombres de proyecto obsoletos ni información privada de documentos de planificación previos no versionados (`docs/00-contexto-inicial/`); el alcance detallado de cada fase (02 en adelante) se confirma y puede ajustarse en el mensaje de autorización explícita que da inicio a esa fase.
+Este plan fue alineado nuevamente con el plan maestro de Centinela para conservar el orden y los componentes exactos de todas las fases (00 a 10), tras detectarse que una versión previa de este documento no conservaba dicho orden ni todos los componentes. No reproduce nombres de proyecto obsoletos ni información privada de documentos de planificación previos no versionados (`docs/00-contexto-inicial/`); el alcance detallado de cada fase (02 en adelante) se confirma y puede ajustarse en el mensaje de autorización explícita que da inicio a esa fase.

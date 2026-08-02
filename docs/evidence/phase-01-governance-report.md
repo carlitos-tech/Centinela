@@ -11,7 +11,7 @@
 
 ## Resultado
 
-**PASS CON OBSERVACIONES**. El ciclo de corrección post-revisión quedó cerrado: el workflow de gobierno se ejecutó en verde sobre el commit `afcecf0` ([Run 30765074177](https://github.com/carlitos-tech/Centinela/actions/runs/30765074177), conclusión `success`). Ver sección "Ciclo de corrección post-revisión" y "Observaciones y decisiones registradas". El Pull Request #2 permanece **abierto y sin fusionar**; el cierre de la fase (merge del PR, cierre del issue #1) requiere aprobación humana explícita, que aún no se ha otorgado.
+**PASS CON OBSERVACIONES**. El ciclo de corrección post-revisión del workflow quedó cerrado: se verificó al menos un commit del historial de corrección con el workflow de gobierno en verde (ver sección "Ciclo de corrección post-revisión"). Este reporte registra commits puntuales del historial como evidencia de que la corrección funcionó; **no** intenta mantener actualizada en todo momento una referencia al commit más reciente de la rama, ya que ese commit cambia con cada push. El **HEAD vigente** de `chore/phase-01-repository-governance` y el estado más reciente del workflow deben consultarse directamente en el [Pull Request #2](https://github.com/carlitos-tech/Centinela/pull/2). Ver también "Observaciones y decisiones registradas". El Pull Request #2 permanece **abierto y sin fusionar**; el cierre de la fase (merge del PR, cierre del issue #1) requiere aprobación humana explícita, que aún no se ha otorgado.
 
 ## Bootstrap de Git
 
@@ -64,6 +64,7 @@
 
 ### Planeación (agregado durante el ciclo de corrección)
 - `docs/planning/implementation-plan.md` — plan de implementación saneado, con las Fases 00 a 10 en orden secuencial, compuertas de aprobación, restricciones transversales y presupuesto/región/retención/tiempo de respuesta objetivo. No reproduce nombres de proyecto obsoletos ni información privada de `docs/00-contexto-inicial/` (carpeta no versionada).
+- Corrección adicional posterior: se detectó que una versión previa de `docs/planning/implementation-plan.md` no conservaba el orden ni todos los componentes del plan maestro aprobado para Centinela. El documento fue **realineado** con el plan maestro, conservando el orden exacto de las Fases 00 a 10 y todos sus componentes (walking skeleton local en la Fase 02, Azure CLI Command Gateway e IaC en la Fase 03, bootstrap de Azure DEV en la Fase 04, datos y conocimiento en la Fase 05, Customer Service MVP en la Fase 06, artifacts/onboarding/atención humana en la Fase 07, Platform Deployment Orchestrator en la Fase 08, CI/CD/seguridad/scorecard en la Fase 09, endurecimiento y demo en la Fase 10).
 
 ### Ya existentes de la Fase 00 (no modificados en esta fase, salvo lo indicado)
 - `README.md`, `.gitignore` (creados en el bootstrap de esta misma fase)
@@ -144,7 +145,7 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 - **Commit 2:** `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1).
 - **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` — SHA `150c881` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente).
 - **Commit 4:** `docs: record commit SHA for third governance fix` — SHA `afcecf0` (documental — registra el SHA del commit 3, que solo podía conocerse una vez creado; sin cambios de lógica ni de contenido sensible).
-- **Commit 5:** `docs: finalize Phase 01 evidence report with green workflow result` — SHA `7177187` (documental — cierra el ciclo de corrección con el resultado verde confirmado sobre `afcecf0`; sin cambios de lógica ni de contenido sensible). Workflow ejecutado también en verde sobre este commit: [Run 30765160331](https://github.com/carlitos-tech/Centinela/actions/runs/30765160331), conclusión `success`. Este es el HEAD actual de la rama al cierre del ciclo de corrección.
+- **Commit 5:** `docs: finalize Phase 01 evidence report with green workflow result` — SHA `7177187` (documental — registra el resultado verde confirmado sobre `afcecf0`; sin cambios de lógica ni de contenido sensible). Workflow ejecutado también en verde sobre este commit: [Run 30765160331](https://github.com/carlitos-tech/Centinela/actions/runs/30765160331), conclusión `success`. Este commit queda registrado únicamente como parte del historial de correcciones — **no** es necesariamente el HEAD vigente de la rama; consultar el estado actual en el [Pull Request #2](https://github.com/carlitos-tech/Centinela/pull/2).
 
 ### Resultado del workflow
 
