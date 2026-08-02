@@ -68,7 +68,7 @@ La revisión de código del PR #4 identificó 4 hallazgos, todos corregidos en e
 | 3 | P2 | `src/Centinela.Application/Skills/RecommendProductSkill.cs:56` | La extracción del presupuesto tomaba el primer número que aparecía en el mensaje, sin anclarlo a una frase de presupuesto, arriesgando interpretar como presupuesto un número no relacionado (p. ej. una cantidad de productos) | Extracción en dos etapas: primero se ubica una frase ancla de presupuesto (`presupuesto de`, `presupuesto máximo de`, `máximo de`, `máximo`, `hasta`) sobre texto normalizado; luego se busca el primer número **después** de esa ancla, soportando formatos `150000`, `150.000` y `$150.000` | `RecommendProductSkillTests.Recommend_ParsesBudget_AcrossNumberFormatsAndPhraseVariants` (6 variantes), `Recommend_DoesNotMisreadAnUnrelatedLeadingNumber_AsTheBudget` |
 | 4 | P2 | `src/Centinela.Application/Common/TextNormalizer.cs:35` | `ContainsAny` usaba `string.Contains`, generando falsos positivos por coincidencia de subcadena (p. ej. "apagó" → "apago" contiene "pago", activando la política de pagos) | Reescrito con coincidencia de palabra/frase completa vía regex con límites `(?<!\w)...(?!\w)`, preservando insensibilidad a mayúsculas y tildes | `TextNormalizerTests` (6 pruebas nuevas, incluye el caso exacto "La lámpara se apagó, ¿qué hago?"), `FakeModelGatewayTests.ClassifyIntent_DoesNotMatchPolicyKeyword_AsArbitrarySubstring`, `SearchPolicySkillTests.FindByMessage_ReturnsNull_WhenKeywordOnlyMatchesAsArbitrarySubstring` |
 
-Las respuestas individuales a cada comentario de revisión y el marcado de los hilos como resueltos se realizan después de que la corrección, su prueba y el workflow de gobernanza en verde estén confirmados sobre el mismo HEAD (ver "Acciones pendientes del desarrollador").
+Las respuestas individuales a cada comentario de revisión y el marcado de los hilos como resueltos se realizaron después de que la corrección, su prueba y el workflow de gobernanza en verde quedaron confirmados sobre el mismo HEAD (ver "Acciones completadas durante el ciclo de corrección").
 
 ## Actualización de Angular 19 → 21
 
@@ -156,9 +156,20 @@ CORS configurado explícitamente para permitir solo el origen del Chat Web local
 - El Pull Request #4 de esta fase permanece **abierto y sin fusionar**; su fusión requiere aprobación humana explícita.
 - No se inició la Fase 03.
 
+## Acciones completadas durante el ciclo de corrección
+
+- Escaneo de seguridad ejecutado.
+- Build backend correcto.
+- Build frontend correcto.
+- 70/70 pruebas correctas.
+- `npm audit --omit=dev` con 0 vulnerabilidades.
+- Workflow de gobernanza confirmado en verde.
+- Cuatro comentarios respondidos.
+- Cuatro hilos de revisión resueltos.
+
 ## Acciones pendientes del desarrollador
 
-- Ejecutar el escaneo de seguridad final sobre el conjunto completo de cambios antes del commit y push de esta corrección.
-- Confirmar en verde el workflow de gobernanza sobre el HEAD que incluye estas correcciones antes de marcar resueltos los 4 hilos de revisión del PR #4.
-- Revisar y aprobar (o solicitar ajustes adicionales a) este reporte y el Pull Request #4.
-- Autorizar explícitamente la fusión del PR #4 y el inicio de la Fase 03 cuando corresponda; esta fase **no** avanza a Fase 03 ni se fusiona por sí misma.
+- Aprobación humana del PR #4.
+- Merge del PR #4.
+- Cierre manual del Issue #3 después del merge.
+- Autorización separada para iniciar la Fase 03.
