@@ -75,7 +75,8 @@
 1. `chore: bootstrap repository` — en `main` (README.md, .gitignore)
 2. `chore: establish repository governance` — en `chore/phase-01-repository-governance` (todos los archivos listados arriba)
 3. `fix: harden Phase 01 governance validation` — SHA `179fc651a46c14d8e88f446a2ed9360819088dc8` — en `chore/phase-01-repository-governance` (corrección del hallazgo de revisión de xargs; ver "Ciclo de corrección post-revisión").
-4. `fix: harden Phase 01 governance validation` (complemento) — en `chore/phase-01-repository-governance` (corrige un ejemplo autorreferente detectado por la propia ejecución del workflow sobre el commit anterior; ver "Segundo hallazgo"). SHA pendiente de registrar tras el push.
+4. `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` — en `chore/phase-01-repository-governance` (corrige un ejemplo autorreferente detectado por la propia ejecución del workflow sobre el commit anterior; ver "Segundo hallazgo").
+5. `fix: remove remaining self-matching path examples from evidence report` — en `chore/phase-01-repository-governance` (la narrativa del commit anterior reintrodujo la misma cadena de ejemplo en prosa; se reescribe sin cadena coincidente). SHA pendiente de registrar tras el push.
 
 ## Reglas de protección de ramas configuradas
 
@@ -136,18 +137,20 @@ El paso "Escaneo de secretos y datos sensibles conocidos" usaba el patrón `git 
 
 ### Segundo hallazgo: autorreferencia en el propio reporte de evidencia
 
-La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defecto de lógica del escaneo, sino por un dato real detectado correctamente): el paso "Escaneo de secretos y datos sensibles conocidos" marcó `docs/evidence/phase-01-governance-report.md` porque ese mismo reporte contenía, como texto de ejemplo dentro de la sección "Validación local", la cadena `` C:\Users\... ``. Los tres puntos (`...`) caen dentro de la clase de caracteres del patrón de rutas locales (`[A-Za-z0-9._-]+`), por lo que el ejemplo coincidía con su propio patrón de detección. Esto confirma que el escaneo corregido **sí detecta** coincidencias reales y no oculta el hallazgo — el comportamiento es el esperado, el problema estaba en el texto de ejemplo del reporte, no en la lógica de detección.
+La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defecto de lógica del escaneo, sino por un dato real detectado correctamente): el paso "Escaneo de secretos y datos sensibles conocidos" marcó `docs/evidence/phase-01-governance-report.md` porque ese mismo reporte contenía, como texto de ejemplo dentro de la sección "Validación local", el prefijo de ruta de perfil de usuario de Windows seguido de puntos suspensivos. Los puntos suspensivos caen dentro de la clase de caracteres del patrón de rutas locales, por lo que el ejemplo coincidía con su propio patrón de detección. Esto confirma que el escaneo corregido **sí detecta** coincidencias reales y no oculta el hallazgo — el comportamiento es el esperado, el problema estaba en el texto de ejemplo del reporte, no en la lógica de detección.
 
-**Corrección:** se reescribió el ejemplo para describir el formato de ruta sin incluir una cadena que coincida con el patrón (`"formato de perfil de usuario de Windows o formato /home/ de Unix"` en lugar de `` C:\Users\... ``). Se re-ejecutó la validación local completa tras el cambio, confirmando `0 coincidencias` en las cuatro categorías genéricas.
+**Corrección:** se reescribió el ejemplo para describir el formato de ruta en prosa, sin incluir ninguna cadena que coincida con el patrón de detección. Se re-ejecutó la validación local completa tras el cambio, confirmando `0 coincidencias` en las cuatro categorías genéricas.
 
-- **Commit 2:** `fix: harden Phase 01 governance validation` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1). SHA: _pendiente de registrar tras el push_.
+- **Commit 2:** `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1).
+- **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente). SHA: _pendiente de registrar tras el push_.
 
 ### Resultado del workflow
 
 | Commit | Conclusión | Detalle |
 |---|---|---|
 | `179fc65` (commit 1) | **failure** | Detección correcta de una autorreferencia en el propio reporte de evidencia (ver "Segundo hallazgo" arriba). No es un fallo del mecanismo de escaneo; confirma que el escaneo corregido detecta coincidencias reales sin ocultarlas. |
-| commit 2 (complemento) | _pendiente de registrar tras el push — se completa con la URL y la conclusión (`success`/`failure`) antes de considerar cerrado el ciclo de corrección_ | |
+| `1869e02` (commit 2) | **failure** | El texto añadido para documentar el primer hallazgo volvió a citar literalmente la cadena de ejemplo que coincide con el patrón, dentro de la propia narrativa del hallazgo. Nuevamente, detección correcta del escaneo, no un fallo de su lógica. |
+| commit 3 (segundo complemento) | _pendiente de registrar tras el push — se completa con la URL y la conclusión (`success`/`failure`) antes de considerar cerrado el ciclo de corrección_ | |
 
 ### Estado del comentario de revisión
 
