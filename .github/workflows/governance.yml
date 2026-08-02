@@ -1,0 +1,163 @@
+name: governance
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  validate-governance:
+    name: Validar gobierno del repositorio
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Verificar archivos de gobierno requeridos
+        shell: bash
+        run: |
+          set -e
+          required_files=(
+            "README.md"
+            "CLAUDE.md"
+            "CONTRIBUTING.md"
+            "SECURITY.md"
+            ".gitignore"
+            ".editorconfig"
+            ".github/CODEOWNERS"
+            ".github/pull_request_template.md"
+            ".github/ISSUE_TEMPLATE/feature.yml"
+            ".github/ISSUE_TEMPLATE/bug.yml"
+            ".github/ISSUE_TEMPLATE/config.yml"
+            "src/CLAUDE.md"
+            "web/CLAUDE.md"
+            "infra/CLAUDE.md"
+            "database/CLAUDE.md"
+            "docs/product/product-brief.md"
+            "docs/product/mvp-scope.md"
+            "docs/product/traceability-matrix.md"
+            "docs/architecture/architecture-overview.md"
+            "docs/architecture/decision-log.md"
+            "docs/architecture/adr/ADR-001-multiagent-architecture.md"
+            "docs/architecture/adr/ADR-002-azure-cli-bicep.md"
+            "docs/architecture/adr/ADR-003-model-gateway.md"
+            "docs/governance/branching-strategy.md"
+            "docs/governance/commit-conventions.md"
+            "docs/governance/definition-of-done.md"
+            "docs/governance/security-rules.md"
+            "docs/demo/demo-scorecard.md"
+            "docs/demo/demo-script-initial.md"
+            "docs/demo/contingency-plan.md"
+          )
+          missing=0
+          for f in "${required_files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "FALTA: $f"
+              missing=1
+            elif [ ! -s "$f" ]; then
+              echo "VACIO: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Validacion de archivos de gobierno: FALLO"
+            exit 1
+          fi
+          echo "Validacion de archivos de gobierno: OK"
+
+      - name: Verificar que .claude/settings.local.json no esta versionado
+        shell: bash
+        run: |
+          set -e
+          if git ls-files | grep -qx ".claude/settings.local.json"; then
+            echo "ERROR: .claude/settings.local.json esta versionado."
+            exit 1
+          fi
+          echo "OK: .claude/settings.local.json no esta versionado."
+
+      - name: Verificar ausencia de archivos .env con valores
+        shell: bash
+        run: |
+          set -e
+          tracked_env=$(git ls-files | grep -E '(^|/)\.env(\..+)?$' | grep -v '\.env\.example$' || true)
+          if [ -n "$tracked_env" ]; then
+            echo "ERROR: archivos .env versionados con posibles valores reales:"
+            echo "$tracked_env"
+            exit 1
+          fi
+          echo "OK: sin archivos .env con valores versionados."
+
+      - name: Verificar ausencia de proyectos funcionales prematuros
+        shell: bash
+        run: |
+          set -e
+          patterns=("*.csproj" "*.sln" "angular.json" "*.bicep")
+          found=0
+          for p in "${patterns[@]}"; do
+            matches=$(git ls-files | grep -E "${p//\*/.*}$" || true)
+            if [ -n "$matches" ]; then
+              echo "ERROR: se encontraron archivos de proyecto funcional no autorizados ($p):"
+              echo "$matches"
+              found=1
+            fi
+          done
+          sql_matches=$(git ls-files "database/*.sql" 2>/dev/null || true)
+          if [ -n "$sql_matches" ]; then
+            echo "ERROR: se encontraron scripts SQL funcionales no autorizados en database/:"
+            echo "$sql_matches"
+            found=1
+          fi
+          if [ "$found" -eq 1 ]; then
+            echo "Validacion de codigo funcional prematuro: FALLO"
+            exit 1
+          fi
+          echo "Validacion de codigo funcional prematuro: OK"
+
+      - name: Escaneo de secretos y datos sensibles conocidos
+        shell: bash
+        run: |
+          set -e
+          tracked=$(git ls-files)
+          fail=0
+
+          secret_patterns='(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
+          if echo "$tracked" | xargs -r grep -lIE "$secret_patterns" 2>/dev/null | grep -q .; then
+            echo "ERROR: posibles secretos detectados en archivos versionados."
+            echo "$tracked" | xargs -r grep -lIE "$secret_patterns" 2>/dev/null
+            fail=1
+          fi
+
+          if echo "$tracked" | xargs -r grep -lIE 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' 2>/dev/null | grep -q .; then
+            echo "ERROR: posibles rutas locales completas detectadas."
+            echo "$tracked" | xargs -r grep -lIE 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' 2>/dev/null
+            fail=1
+          fi
+
+          # Patron construido en tiempo de ejecucion (no se versiona el nombre real en texto plano).
+          real_company_pattern=$(printf '%s' "cG9zdG9iW2/Ds11ufGdhc2Vvc2FzIHBvc3RvYg==" | base64 -d)
+          if echo "$tracked" | xargs -r grep -liE "$real_company_pattern" 2>/dev/null | grep -q .; then
+            echo "ERROR: referencia a nombre de empresa real detectada."
+            echo "$tracked" | xargs -r grep -liE "$real_company_pattern" 2>/dev/null
+            fail=1
+          fi
+
+          guid_pattern='[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+          if echo "$tracked" | xargs -r grep -lIE "$guid_pattern" 2>/dev/null | grep -q .; then
+            echo "ERROR: posible identificador completo (GUID, ej. Tenant/Subscription ID) detectado sin enmascarar."
+            echo "$tracked" | xargs -r grep -lIE "$guid_pattern" 2>/dev/null
+            fail=1
+          fi
+
+          if [ "$fail" -eq 1 ]; then
+            echo "Escaneo de seguridad: FALLO"
+            exit 1
+          fi
+          echo "Escaneo de seguridad: OK"
