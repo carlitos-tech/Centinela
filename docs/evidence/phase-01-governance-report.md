@@ -74,7 +74,8 @@
 
 1. `chore: bootstrap repository` — en `main` (README.md, .gitignore)
 2. `chore: establish repository governance` — en `chore/phase-01-repository-governance` (todos los archivos listados arriba)
-3. `fix: harden Phase 01 governance validation` — en `chore/phase-01-repository-governance` (corrección del hallazgo de revisión; ver "Ciclo de corrección post-revisión"). SHA pendiente de registrar tras el push.
+3. `fix: harden Phase 01 governance validation` — SHA `179fc651a46c14d8e88f446a2ed9360819088dc8` — en `chore/phase-01-repository-governance` (corrección del hallazgo de revisión de xargs; ver "Ciclo de corrección post-revisión").
+4. `fix: harden Phase 01 governance validation` (complemento) — en `chore/phase-01-repository-governance` (corrige un ejemplo autorreferente detectado por la propia ejecución del workflow sobre el commit anterior; ver "Segundo hallazgo"). SHA pendiente de registrar tras el push.
 
 ## Reglas de protección de ramas configuradas
 
@@ -130,24 +131,35 @@ El paso "Escaneo de secretos y datos sensibles conocidos" usaba el patrón `git 
 
 ### Commit corrector
 
-- **Commit:** `fix: harden Phase 01 governance validation` — SHA: _pendiente de registrar tras el push (ver sección siguiente)_.
+- **Commit 1:** `fix: harden Phase 01 governance validation` — SHA `179fc651a46c14d8e88f446a2ed9360819088dc8`.
 - **Rama:** `chore/phase-01-repository-governance` (misma rama, sin crear una nueva).
 
-### Resultado del nuevo workflow
+### Segundo hallazgo: autorreferencia en el propio reporte de evidencia
 
-_Pendiente de registrar tras el push del commit corrector — se completa esta sección con la URL y la conclusión (`success`/`failure`) de la ejecución de GitHub Actions sobre el nuevo commit antes de considerar cerrado el ciclo de corrección._
+La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defecto de lógica del escaneo, sino por un dato real detectado correctamente): el paso "Escaneo de secretos y datos sensibles conocidos" marcó `docs/evidence/phase-01-governance-report.md` porque ese mismo reporte contenía, como texto de ejemplo dentro de la sección "Validación local", la cadena `` C:\Users\... ``. Los tres puntos (`...`) caen dentro de la clase de caracteres del patrón de rutas locales (`[A-Za-z0-9._-]+`), por lo que el ejemplo coincidía con su propio patrón de detección. Esto confirma que el escaneo corregido **sí detecta** coincidencias reales y no oculta el hallazgo — el comportamiento es el esperado, el problema estaba en el texto de ejemplo del reporte, no en la lógica de detección.
+
+**Corrección:** se reescribió el ejemplo para describir el formato de ruta sin incluir una cadena que coincida con el patrón (`"formato de perfil de usuario de Windows o formato /home/ de Unix"` en lugar de `` C:\Users\... ``). Se re-ejecutó la validación local completa tras el cambio, confirmando `0 coincidencias` en las cuatro categorías genéricas.
+
+- **Commit 2:** `fix: harden Phase 01 governance validation` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1). SHA: _pendiente de registrar tras el push_.
+
+### Resultado del workflow
+
+| Commit | Conclusión | Detalle |
+|---|---|---|
+| `179fc65` (commit 1) | **failure** | Detección correcta de una autorreferencia en el propio reporte de evidencia (ver "Segundo hallazgo" arriba). No es un fallo del mecanismo de escaneo; confirma que el escaneo corregido detecta coincidencias reales sin ocultarlas. |
+| commit 2 (complemento) | _pendiente de registrar tras el push — se completa con la URL y la conclusión (`success`/`failure`) antes de considerar cerrado el ciclo de corrección_ | |
 
 ### Estado del comentario de revisión
 
 - **Comentario:** [id `3700117477`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700117477), de `chatgpt-codex-connector[bot]`, sobre `.github/workflows/governance.yml:132`.
-- **Estado:** _pendiente de respuesta y de marcar como resuelto — se actualiza una vez que el nuevo workflow se ejecute en verde sobre el commit corrector._
+- **Estado:** _pendiente de respuesta y de marcar como resuelto — se actualiza una vez que el workflow se ejecute en verde sobre el commit 2._
 
 ## Validación local (equivalente al workflow, ejecutada durante el ciclo de corrección)
 
 Ejecutada manualmente sobre el contenido versionado de la rama `chore/phase-01-repository-governance` mediante `git grep`, replicando exactamente la lógica del workflow corregido:
 
 - Secretos/credenciales conocidos (tokens GitHub, AWS, Slack, llaves privadas): **0 coincidencias**.
-- Rutas locales completas (`C:\Users\...`, `/home/...`): **0 coincidencias**.
+- Rutas locales completas (formato de perfil de usuario de Windows o formato `/home/` de Unix): **0 coincidencias**.
 - Correos electrónicos (patrón genérico, sin listar proveedores específicos): **0 coincidencias**.
 - Identificadores tipo GUID (posibles Tenant ID / Subscription ID sin enmascarar): **0 coincidencias**.
 - Nombre de organización real asociada al desarrollador (validación local, patrón no versionado en ningún archivo): **0 coincidencias** en texto plano ni codificado.
