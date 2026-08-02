@@ -1,0 +1,38 @@
+name: Nueva funcionalidad
+description: Proponer una nueva funcionalidad o mejora para Centinela.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Recuerda: todos los datos de ejemplo deben ser ficticios (NovaCasa S.A.S.). No incluyas información real ni credenciales.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo
+      description: Qué se busca lograr con esta funcionalidad.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: Por qué es necesaria, a qué fase o componente pertenece.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Alcance
+      description: Qué incluye y qué explícitamente no incluye.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceptación
+      description: Lista de condiciones para considerar esta funcionalidad completa.
+    validations:
+      required: true

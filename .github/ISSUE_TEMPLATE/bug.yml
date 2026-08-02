@@ -1,0 +1,30 @@
+name: Reporte de error
+description: Reportar un comportamiento incorrecto en Centinela.
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No incluyas datos reales, credenciales ni valores sensibles en este reporte. Usa solo datos ficticios (NovaCasa S.A.S.).
+  - type: textarea
+    id: description
+    attributes:
+      label: Descripción del error
+      description: Qué ocurre y qué se esperaba en su lugar.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacto
+      description: Severidad y alcance del error.
+    validations:
+      required: false

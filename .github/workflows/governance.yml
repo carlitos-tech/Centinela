@@ -1,0 +1,173 @@
+name: governance
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  validate-governance:
+    name: Validar gobierno del repositorio
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Verificar archivos de gobierno requeridos
+        shell: bash
+        run: |
+          set -e
+          required_files=(
+            "README.md"
+            "CLAUDE.md"
+            "CONTRIBUTING.md"
+            "SECURITY.md"
+            ".gitignore"
+            ".editorconfig"
+            ".github/CODEOWNERS"
+            ".github/pull_request_template.md"
+            ".github/ISSUE_TEMPLATE/feature.yml"
+            ".github/ISSUE_TEMPLATE/bug.yml"
+            ".github/ISSUE_TEMPLATE/config.yml"
+            "src/CLAUDE.md"
+            "web/CLAUDE.md"
+            "infra/CLAUDE.md"
+            "database/CLAUDE.md"
+            "docs/product/product-brief.md"
+            "docs/product/mvp-scope.md"
+            "docs/product/traceability-matrix.md"
+            "docs/architecture/architecture-overview.md"
+            "docs/architecture/decision-log.md"
+            "docs/architecture/adr/ADR-001-multiagent-architecture.md"
+            "docs/architecture/adr/ADR-002-azure-cli-bicep.md"
+            "docs/architecture/adr/ADR-003-model-gateway.md"
+            "docs/governance/branching-strategy.md"
+            "docs/governance/commit-conventions.md"
+            "docs/governance/definition-of-done.md"
+            "docs/governance/security-rules.md"
+            "docs/demo/demo-scorecard.md"
+            "docs/demo/demo-script-initial.md"
+            "docs/demo/contingency-plan.md"
+          )
+          missing=0
+          for f in "${required_files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "FALTA: $f"
+              missing=1
+            elif [ ! -s "$f" ]; then
+              echo "VACIO: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "Validacion de archivos de gobierno: FALLO"
+            exit 1
+          fi
+          echo "Validacion de archivos de gobierno: OK"
+
+      - name: Verificar que .claude/settings.local.json no esta versionado
+        shell: bash
+        run: |
+          set -e
+          if [ -n "$(git ls-files -- '.claude/settings.local.json')" ]; then
+            echo "ERROR: .claude/settings.local.json esta versionado."
+            exit 1
+          fi
+          echo "OK: .claude/settings.local.json no esta versionado."
+
+      - name: Verificar ausencia de archivos .env con valores
+        shell: bash
+        run: |
+          set -e
+          tracked_env=$(git ls-files -z -- '*.env' '*.env.*' ':(exclude)*.env.example' | tr '\0' '\n')
+          if [ -n "$tracked_env" ]; then
+            echo "ERROR: archivos .env versionados con posibles valores reales:"
+            printf '%s\n' "$tracked_env"
+            exit 1
+          fi
+          echo "OK: sin archivos .env con valores versionados."
+
+      - name: Verificar ausencia de proyectos funcionales prematuros
+        shell: bash
+        run: |
+          set -e
+          found=0
+
+          proj_matches=$(git ls-files -z -- '*.csproj' '*.sln' 'angular.json' '*.bicep' | tr '\0' '\n')
+          if [ -n "$proj_matches" ]; then
+            echo "ERROR: se encontraron archivos de proyecto funcional no autorizados:"
+            printf '%s\n' "$proj_matches"
+            found=1
+          fi
+
+          sql_matches=$(git ls-files -z -- 'database/*.sql' | tr '\0' '\n')
+          if [ -n "$sql_matches" ]; then
+            echo "ERROR: se encontraron scripts SQL funcionales no autorizados en database/:"
+            printf '%s\n' "$sql_matches"
+            found=1
+          fi
+
+          if [ "$found" -eq 1 ]; then
+            echo "Validacion de codigo funcional prematuro: FALLO"
+            exit 1
+          fi
+          echo "Validacion de codigo funcional prematuro: OK"
+
+      # Escaneo de datos sensibles usando "git grep" directamente sobre el contenido
+      # versionado. A diferencia de "git ls-files | xargs grep", esto no depende de
+      # dividir una lista de rutas por espacios en blanco, por lo que nombres de
+      # archivo con espacios (p. ej. "docs/evidence/evidencia funcionamiento proxy.png")
+      # se procesan de forma segura y ningun archivo queda sin analizar.
+      # Los codigos de salida de "git grep" se interpretan explicitamente:
+      #   0 = coincidencia encontrada (dato sensible detectado -> fallo)
+      #   1 = sin coincidencias (resultado normal, no es un error)
+      #  >1 = fallo real de la herramienta (no se oculta: aborta el job)
+      - name: Escaneo de secretos y datos sensibles conocidos
+        shell: bash
+        run: |
+          set -e
+          fail=0
+
+          scan() {
+            label="$1"
+            pattern="$2"
+            rc=0
+            git grep -zIlE "$pattern" > /tmp/gg_hits 2> /tmp/gg_err || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "ERROR: $label detectado(s) en archivos versionados:"
+              tr '\0' '\n' < /tmp/gg_hits
+              fail=1
+            elif [ "$rc" -eq 1 ]; then
+              echo "OK: sin coincidencias de $label."
+            else
+              echo "ERROR: fallo al ejecutar el escaneo de $label (codigo $rc), no se puede garantizar cobertura completa:"
+              cat /tmp/gg_err
+              exit 1
+            fi
+          }
+
+          # Secretos y credenciales conocidos (tokens GitHub/AWS/Slack, llaves privadas).
+          scan "secretos/credenciales conocidos" '(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
+
+          # Rutas locales completas del equipo de desarrollo.
+          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/'
+
+          # Correos electronicos (validacion generica, sin listar proveedores especificos).
+          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+
+          # Identificadores tipo GUID sin enmascarar (posible Tenant ID / Subscription ID de Azure).
+          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+
+          if [ "$fail" -eq 1 ]; then
+            echo "Escaneo de seguridad: FALLO"
+            exit 1
+          fi
+          echo "Escaneo de seguridad: OK"

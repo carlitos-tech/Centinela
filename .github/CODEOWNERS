@@ -1,0 +1,5 @@
+# CODEOWNERS — Centinela
+# Equipo de un solo desarrollador: no se exige aprobación obligatoria de CODEOWNERS
+# en la protección de ramas, pero se deja registrada la propiedad del código.
+
+* @carlitos-tech
