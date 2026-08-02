@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Centinela.Application\Centinela.Application.csproj" />
+    <ProjectReference Include="..\Centinela.Infrastructure\Centinela.Infrastructure.csproj" />
+    <ProjectReference Include="..\Centinela.Domain\Centinela.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

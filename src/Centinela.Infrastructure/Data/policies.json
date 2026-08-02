@@ -1,0 +1,44 @@
+[
+  {
+    "topic": "devoluciones",
+    "title": "Política de devoluciones",
+    "content": "NovaCasa S.A.S. acepta devoluciones dentro de los 10 días calendario posteriores a la entrega, siempre que el producto esté sin uso y conserve su empaque original. El reembolso se procesa en un plazo máximo de 5 días hábiles tras recibir el producto devuelto.",
+    "keywords": ["devolucion", "devoluciones", "devolver", "reembolso", "cambio"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-DEV (dato de demostración)"
+  },
+  {
+    "topic": "garantia",
+    "title": "Política de garantía",
+    "content": "Los productos de NovaCasa S.A.S. cuentan con garantía de 6 meses contra defectos de fabricación, contados a partir de la fecha de compra. La garantía no cubre daños por mal uso o desgaste normal.",
+    "keywords": ["garantia", "garantías", "defecto", "defectuoso"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-GAR (dato de demostración)"
+  },
+  {
+    "topic": "entregas",
+    "title": "Política de entregas",
+    "content": "Las entregas dentro de la ciudad principal se realizan entre 2 y 4 días hábiles. Para otras ciudades, el tiempo estimado es de 5 a 8 días hábiles. El costo de envío se calcula según el destino al finalizar la compra.",
+    "keywords": ["entrega", "entregas", "envio", "envios", "domicilio", "despacho"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-ENT (dato de demostración)"
+  },
+  {
+    "topic": "pagos",
+    "title": "Métodos de pago",
+    "content": "NovaCasa S.A.S. acepta pagos con tarjeta de crédito, tarjeta débito y transferencia bancaria a través de pasarelas de pago certificadas. No se procesan pagos en efectivo contraentrega en esta fase.",
+    "keywords": ["pago", "pagos", "tarjeta", "transferencia", "pse"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-PAG (dato de demostración)"
+  },
+  {
+    "topic": "disponibilidad",
+    "title": "Política de disponibilidad de inventario",
+    "content": "La disponibilidad mostrada en el catálogo se actualiza diariamente. Los productos marcados como 'disponibilidad limitada' pueden agotarse antes de completar la compra. NovaCasa S.A.S. no garantiza reservas sin pago confirmado.",
+    "keywords": ["disponibilidad", "inventario", "existencias", "stock"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-DIS (dato de demostración)"
+  },
+  {
+    "topic": "escalamiento_reclamos",
+    "title": "Política de escalamiento de reclamos",
+    "content": "Los reclamos relacionados con productos dañados, pedidos incompletos o clientes insatisfechos se escalan de forma prioritaria a un asesor humano, quien dará seguimiento directo al caso.",
+    "keywords": ["reclamo", "reclamos", "queja", "quejas", "molesto", "danado", "dañado"],
+    "source": "Políticas ficticias NovaCasa S.A.S. — Documento POL-ESC (dato de demostración)"
+  }
+]
