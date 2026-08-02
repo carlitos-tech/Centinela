@@ -156,8 +156,9 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 
 ### Estado del comentario de revisión
 
-- **Comentario:** [id `3700117477`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700117477), de `chatgpt-codex-connector[bot]`, sobre `.github/workflows/governance.yml:132`.
-- **Estado:** respondido tras confirmar el workflow en verde sobre `afcecf0` (ver [Run 30765074177](https://github.com/carlitos-tech/Centinela/actions/runs/30765074177)); intento de marcar el hilo como resuelto registrado a continuación.
+- **Comentario original:** [id `3700117477`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700117477), de `chatgpt-codex-connector[bot]`, sobre `.github/workflows/governance.yml:132`.
+- **Respuesta:** [id `3700204337`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700204337), publicada confirmando la corrección y el workflow en verde sobre el HEAD final de la rama ([Run 30765232469](https://github.com/carlitos-tech/Centinela/actions/runs/30765232469), conclusión `success`).
+- **Hilo de revisión:** marcado como **resuelto** mediante la mutación `resolveReviewThread` (GraphQL).
 
 ## Validación local (equivalente al workflow, ejecutada durante el ciclo de corrección)
 
