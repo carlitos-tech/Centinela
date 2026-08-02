@@ -1,0 +1,60 @@
+# Centinela — .gitignore
+# Excluye configuración local, secretos y artefactos de compilación.
+# No debe rastrearse ningún archivo con credenciales, tokens o datos del equipo local.
+
+# Configuración local de Claude Code (específica del equipo, nunca versionada)
+.claude/settings.local.json
+
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+secrets/
+credentials/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+yarn-error.log*
+
+# Cobertura y resultados de pruebas
+coverage/
+TestResults/
+*.trx
+
+# Temporales
+*.tmp
+*.log
+*.bak
+*.swp
+Thumbs.db
+.DS_Store
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# Infraestructura (estado local, nunca credenciales)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Azure
+*.PublishSettings
