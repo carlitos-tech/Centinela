@@ -76,7 +76,7 @@
 2. `chore: establish repository governance` — en `chore/phase-01-repository-governance` (todos los archivos listados arriba)
 3. `fix: harden Phase 01 governance validation` — SHA `179fc651a46c14d8e88f446a2ed9360819088dc8` — en `chore/phase-01-repository-governance` (corrección del hallazgo de revisión de xargs; ver "Ciclo de corrección post-revisión").
 4. `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` — en `chore/phase-01-repository-governance` (corrige un ejemplo autorreferente detectado por la propia ejecución del workflow sobre el commit anterior; ver "Segundo hallazgo").
-5. `fix: remove remaining self-matching path examples from evidence report` — en `chore/phase-01-repository-governance` (la narrativa del commit anterior reintrodujo la misma cadena de ejemplo en prosa; se reescribe sin cadena coincidente). SHA pendiente de registrar tras el push.
+5. `fix: remove remaining self-matching path examples from evidence report` — SHA `150c881` — en `chore/phase-01-repository-governance` (la narrativa del commit anterior reintrodujo la misma cadena de ejemplo en prosa; se reescribe sin cadena coincidente).
 
 ## Reglas de protección de ramas configuradas
 
@@ -142,7 +142,7 @@ La ejecución del workflow sobre el commit `179fc65` **falló** (no por un defec
 **Corrección:** se reescribió el ejemplo para describir el formato de ruta en prosa, sin incluir ninguna cadena que coincida con el patrón de detección. Se re-ejecutó la validación local completa tras el cambio, confirmando `0 coincidencias` en las cuatro categorías genéricas.
 
 - **Commit 2:** `fix: remove self-matching example from Phase 01 evidence report` — SHA `1869e02` (complemento — corrige el ejemplo autorreferente en el reporte de evidencia detectado por la propia ejecución del workflow sobre el commit 1).
-- **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente). SHA: _pendiente de registrar tras el push_.
+- **Commit 3:** `fix: remove remaining self-matching path examples from evidence report` (segundo complemento — la narrativa añadida en el commit 2 para describir el hallazgo reintrodujo, en prosa, la misma cadena de ejemplo que activaba el patrón; se reescribió en prosa sin cadena coincidente). SHA: `150c881`.
 
 ### Resultado del workflow
 
