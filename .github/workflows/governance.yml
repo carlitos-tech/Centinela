@@ -77,7 +77,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          if git ls-files | grep -qx ".claude/settings.local.json"; then
+          if [ -n "$(git ls-files -- '.claude/settings.local.json')" ]; then
             echo "ERROR: .claude/settings.local.json esta versionado."
             exit 1
           fi
@@ -87,10 +87,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          tracked_env=$(git ls-files | grep -E '(^|/)\.env(\..+)?$' | grep -v '\.env\.example$' || true)
+          tracked_env=$(git ls-files -z -- '*.env' '*.env.*' ':(exclude)*.env.example' | tr '\0' '\n')
           if [ -n "$tracked_env" ]; then
             echo "ERROR: archivos .env versionados con posibles valores reales:"
-            echo "$tracked_env"
+            printf '%s\n' "$tracked_env"
             exit 1
           fi
           echo "OK: sin archivos .env con valores versionados."
@@ -99,62 +99,72 @@ jobs:
         shell: bash
         run: |
           set -e
-          patterns=("*.csproj" "*.sln" "angular.json" "*.bicep")
           found=0
-          for p in "${patterns[@]}"; do
-            matches=$(git ls-files | grep -E "${p//\*/.*}$" || true)
-            if [ -n "$matches" ]; then
-              echo "ERROR: se encontraron archivos de proyecto funcional no autorizados ($p):"
-              echo "$matches"
-              found=1
-            fi
-          done
-          sql_matches=$(git ls-files "database/*.sql" 2>/dev/null || true)
-          if [ -n "$sql_matches" ]; then
-            echo "ERROR: se encontraron scripts SQL funcionales no autorizados en database/:"
-            echo "$sql_matches"
+
+          proj_matches=$(git ls-files -z -- '*.csproj' '*.sln' 'angular.json' '*.bicep' | tr '\0' '\n')
+          if [ -n "$proj_matches" ]; then
+            echo "ERROR: se encontraron archivos de proyecto funcional no autorizados:"
+            printf '%s\n' "$proj_matches"
             found=1
           fi
+
+          sql_matches=$(git ls-files -z -- 'database/*.sql' | tr '\0' '\n')
+          if [ -n "$sql_matches" ]; then
+            echo "ERROR: se encontraron scripts SQL funcionales no autorizados en database/:"
+            printf '%s\n' "$sql_matches"
+            found=1
+          fi
+
           if [ "$found" -eq 1 ]; then
             echo "Validacion de codigo funcional prematuro: FALLO"
             exit 1
           fi
           echo "Validacion de codigo funcional prematuro: OK"
 
+      # Escaneo de datos sensibles usando "git grep" directamente sobre el contenido
+      # versionado. A diferencia de "git ls-files | xargs grep", esto no depende de
+      # dividir una lista de rutas por espacios en blanco, por lo que nombres de
+      # archivo con espacios (p. ej. "docs/evidence/evidencia funcionamiento proxy.png")
+      # se procesan de forma segura y ningun archivo queda sin analizar.
+      # Los codigos de salida de "git grep" se interpretan explicitamente:
+      #   0 = coincidencia encontrada (dato sensible detectado -> fallo)
+      #   1 = sin coincidencias (resultado normal, no es un error)
+      #  >1 = fallo real de la herramienta (no se oculta: aborta el job)
       - name: Escaneo de secretos y datos sensibles conocidos
         shell: bash
         run: |
           set -e
-          tracked=$(git ls-files)
           fail=0
 
-          secret_patterns='(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
-          if echo "$tracked" | xargs -r grep -lIE "$secret_patterns" 2>/dev/null | grep -q .; then
-            echo "ERROR: posibles secretos detectados en archivos versionados."
-            echo "$tracked" | xargs -r grep -lIE "$secret_patterns" 2>/dev/null
-            fail=1
-          fi
+          scan() {
+            label="$1"
+            pattern="$2"
+            rc=0
+            git grep -zIlE "$pattern" > /tmp/gg_hits 2> /tmp/gg_err || rc=$?
+            if [ "$rc" -eq 0 ]; then
+              echo "ERROR: $label detectado(s) en archivos versionados:"
+              tr '\0' '\n' < /tmp/gg_hits
+              fail=1
+            elif [ "$rc" -eq 1 ]; then
+              echo "OK: sin coincidencias de $label."
+            else
+              echo "ERROR: fallo al ejecutar el escaneo de $label (codigo $rc), no se puede garantizar cobertura completa:"
+              cat /tmp/gg_err
+              exit 1
+            fi
+          }
 
-          if echo "$tracked" | xargs -r grep -lIE 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' 2>/dev/null | grep -q .; then
-            echo "ERROR: posibles rutas locales completas detectadas."
-            echo "$tracked" | xargs -r grep -lIE 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' 2>/dev/null
-            fail=1
-          fi
+          # Secretos y credenciales conocidos (tokens GitHub/AWS/Slack, llaves privadas).
+          scan "secretos/credenciales conocidos" '(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
 
-          # Patron construido en tiempo de ejecucion (no se versiona el nombre real en texto plano).
-          real_company_pattern=$(printf '%s' "cG9zdG9iW2/Ds11ufGdhc2Vvc2FzIHBvc3RvYg==" | base64 -d)
-          if echo "$tracked" | xargs -r grep -liE "$real_company_pattern" 2>/dev/null | grep -q .; then
-            echo "ERROR: referencia a nombre de empresa real detectada."
-            echo "$tracked" | xargs -r grep -liE "$real_company_pattern" 2>/dev/null
-            fail=1
-          fi
+          # Rutas locales completas del equipo de desarrollo.
+          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/'
 
-          guid_pattern='[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-          if echo "$tracked" | xargs -r grep -lIE "$guid_pattern" 2>/dev/null | grep -q .; then
-            echo "ERROR: posible identificador completo (GUID, ej. Tenant/Subscription ID) detectado sin enmascarar."
-            echo "$tracked" | xargs -r grep -lIE "$guid_pattern" 2>/dev/null
-            fail=1
-          fi
+          # Correos electronicos (validacion generica, sin listar proveedores especificos).
+          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+
+          # Identificadores tipo GUID sin enmascarar (posible Tenant ID / Subscription ID de Azure).
+          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 
           if [ "$fail" -eq 1 ]; then
             echo "Escaneo de seguridad: FALLO"

@@ -7,10 +7,11 @@
 - **Rama de trabajo:** `chore/phase-01-repository-governance` (creada desde `develop`)
 - **Remoto configurado:** `https://github.com/carlitos-tech/Centinela.git`
 - **Issue de la fase:** [#1 — Phase 01: Repository governance](https://github.com/carlitos-tech/Centinela/issues/1)
+- **Pull Request de la fase:** [#2](https://github.com/carlitos-tech/Centinela/pull/2) — rama de trabajo `chore/phase-01-repository-governance` → rama base `develop`. **Estado: abierto, sin fusionar.**
 
 ## Resultado
 
-**PASS CON OBSERVACIONES.** Ver sección "Observaciones y decisiones registradas".
+**PASS CON OBSERVACIONES**, en proceso de corrección tras revisión automática del Pull Request. Ver sección "Ciclo de corrección post-revisión" y "Observaciones y decisiones registradas". El resultado definitivo de la fase queda condicionado a que el workflow de gobierno se ejecute en verde sobre el commit corrector y a la aprobación humana explícita del Pull Request.
 
 ## Bootstrap de Git
 
@@ -61,6 +62,9 @@
 - `docs/architecture/adr/ADR-002-azure-cli-bicep.md`
 - `docs/architecture/adr/ADR-003-model-gateway.md`
 
+### Planeación (agregado durante el ciclo de corrección)
+- `docs/planning/implementation-plan.md` — plan de implementación saneado, con las Fases 00 a 10 en orden secuencial, compuertas de aprobación, restricciones transversales y presupuesto/región/retención/tiempo de respuesta objetivo. No reproduce nombres de proyecto obsoletos ni información privada de `docs/00-contexto-inicial/` (carpeta no versionada).
+
 ### Ya existentes de la Fase 00 (no modificados en esta fase, salvo lo indicado)
 - `README.md`, `.gitignore` (creados en el bootstrap de esta misma fase)
 - `docs/evidence/preflight-report.md`
@@ -70,6 +74,7 @@
 
 1. `chore: bootstrap repository` — en `main` (README.md, .gitignore)
 2. `chore: establish repository governance` — en `chore/phase-01-repository-governance` (todos los archivos listados arriba)
+3. `fix: harden Phase 01 governance validation` — en `chore/phase-01-repository-governance` (corrección del hallazgo de revisión; ver "Ciclo de corrección post-revisión"). SHA pendiente de registrar tras el push.
 
 ## Reglas de protección de ramas configuradas
 
@@ -103,21 +108,56 @@ No se detectaron funciones solicitadas que estuvieran indisponibles por el plan 
 - Archivo: `.github/workflows/governance.yml`
 - Disparadores: `pull_request` y `push` hacia `main` y `develop`.
 - Acción oficial usada: `actions/checkout@v4.2.2` (versión fija, oficial).
-- Validaciones incluidas: existencia y no vacuidad de archivos de gobierno requeridos; ausencia de `.claude/settings.local.json` versionado; ausencia de archivos `.env` con valores; ausencia de proyectos funcionales prematuros (`.csproj`, `.sln`, `angular.json`, `.bicep`, `.sql` en `database/`); escaneo de secretos conocidos, rutas locales completas, nombre de empresa real (patrón codificado en base64 dentro del workflow para no versionar el nombre real en texto plano) y GUIDs (posibles Tenant/Subscription ID) sin enmascarar.
+- Validaciones incluidas: existencia y no vacuidad de archivos de gobierno requeridos; ausencia de `.claude/settings.local.json` versionado; ausencia de archivos `.env` con valores; ausencia de proyectos funcionales prematuros (`.csproj`, `.sln`, `angular.json`, `.bicep`, `.sql` en `database/`); escaneo de secretos/credenciales conocidos, rutas locales completas, correos electrónicos y GUIDs (posibles Tenant/Subscription ID) sin enmascarar.
 - No es un workflow de CI/CD de aplicación: no compila, no prueba ni despliega código funcional (no existe código funcional en esta fase).
+- **Nota:** el workflow **no** contiene ninguna validación específica de nombre de empresa real (ni en texto plano ni codificada) — ver "Ciclo de corrección post-revisión" para el detalle de por qué se eliminó y cómo se sustituyó por validaciones genéricas.
 
-## Validación local (equivalente al workflow)
+## Ciclo de corrección post-revisión
 
-Ejecutada manualmente antes del commit final sobre todos los archivos nuevos (`.editorconfig`, `.github/`, `CLAUDE.md`, `CONTRIBUTING.md`, `SECURITY.md`, `database/`, `docs/`, `infra/`, `src/`, `web/`):
+Tras la apertura del PR #2, la revisión automática (`chatgpt-codex-connector[bot]`, comentario en `.github/workflows/governance.yml:132`, sobre el commit `c477952ba0b7fb3f48d53af50a277407cf180044`) identificó un hallazgo de severidad P2 y se ejecutó un ciclo de corrección sobre la misma rama, sin crear una rama nueva y sin fusionar el PR.
 
-- Secretos conocidos (tokens GitHub, AWS, Slack, llaves privadas): **0 coincidencias**.
+### Hallazgo
+
+El paso "Escaneo de secretos y datos sensibles conocidos" usaba el patrón `git ls-files | xargs grep -lIE "$pattern" 2>/dev/null`. `xargs`, por defecto, separa los nombres de archivo recibidos por espacios en blanco, por lo que un archivo legítimo y ya versionado con espacio en el nombre — `docs/evidence/evidencia funcionamiento proxy.png` — se dividía en múltiples argumentos incorrectos. Además, `2>/dev/null` ocultaba cualquier error real de `grep` derivado de esa división, de modo que un archivo podía quedar sin analizar sin que el workflow lo reportara como fallo.
+
+### Corrección implementada
+
+1. Los pasos que listan archivos por patrón (`.env`, proyectos funcionales prematuros) ahora usan `git ls-files -z` (salida delimitada por NUL) en lugar de separación por espacios en blanco.
+2. El paso de escaneo de datos sensibles se reescribió para usar `git grep -zIlE` directamente sobre el contenido versionado, que no depende de dividir una lista de rutas por espacios y por tanto no puede omitir un archivo por tener espacios en el nombre.
+3. Los códigos de salida de `git grep` se interpretan explícitamente: `0` = coincidencia real (dato sensible detectado, falla el job), `1` = sin coincidencias (resultado normal), `>1` = fallo real de la herramienta — este último ya **no se oculta** y aborta el job con código de salida distinto de cero, en lugar de tratarse como "sin resultados".
+4. Se **eliminó por completo** el patrón (antes codificado en Base64 dentro del propio workflow) que detectaba el nombre de una organización real. No se sustituyó por ninguna otra codificación reversible. La detección de nombres de empresas reales queda como una validación **local y manual**, ejecutada por el desarrollador antes de cada commit, cuyo patrón nunca se escribe en ningún archivo versionado del repositorio. El workflow permanente solo retiene validaciones genéricas que no requieren versionar ningún nombre identificable: secretos/credenciales conocidos, rutas locales completas, correos electrónicos (nuevo) y GUIDs sin enmascarar.
+5. Se actualizaron el Issue #1 (referencia a organización real reemplazada por lenguaje genérico; enlaces rotos hacia `main` reemplazados por referencia temporal al PR #2; checklist de Definition of Done ajustado al estado real) y el cuerpo del PR #2 (`Closes #1` → `Refs #1`; ítem de workflow en verde permanece sin marcar hasta confirmación; se mantiene y refuerza el lenguaje de "no fusionar sin aprobación humana explícita").
+
+### Commit corrector
+
+- **Commit:** `fix: harden Phase 01 governance validation` — SHA: _pendiente de registrar tras el push (ver sección siguiente)_.
+- **Rama:** `chore/phase-01-repository-governance` (misma rama, sin crear una nueva).
+
+### Resultado del nuevo workflow
+
+_Pendiente de registrar tras el push del commit corrector — se completa esta sección con la URL y la conclusión (`success`/`failure`) de la ejecución de GitHub Actions sobre el nuevo commit antes de considerar cerrado el ciclo de corrección._
+
+### Estado del comentario de revisión
+
+- **Comentario:** [id `3700117477`](https://github.com/carlitos-tech/Centinela/pull/2#discussion_r3700117477), de `chatgpt-codex-connector[bot]`, sobre `.github/workflows/governance.yml:132`.
+- **Estado:** _pendiente de respuesta y de marcar como resuelto — se actualiza una vez que el nuevo workflow se ejecute en verde sobre el commit corrector._
+
+## Validación local (equivalente al workflow, ejecutada durante el ciclo de corrección)
+
+Ejecutada manualmente sobre el contenido versionado de la rama `chore/phase-01-repository-governance` mediante `git grep`, replicando exactamente la lógica del workflow corregido:
+
+- Secretos/credenciales conocidos (tokens GitHub, AWS, Slack, llaves privadas): **0 coincidencias**.
 - Rutas locales completas (`C:\Users\...`, `/home/...`): **0 coincidencias**.
-- Nombre de empresa real (organización real asociada al desarrollador): **0 coincidencias** en texto plano. El patrón de detección usado por `.github/workflows/governance.yml` se codifica en base64 dentro del propio workflow y se decodifica solo en tiempo de ejecución, precisamente para que el nombre real no quede versionado como texto plano en ningún archivo del repositorio, ni siquiera dentro de la propia regla que lo detecta.
+- Correos electrónicos (patrón genérico, sin listar proveedores específicos): **0 coincidencias**.
 - Identificadores tipo GUID (posibles Tenant ID / Subscription ID sin enmascarar): **0 coincidencias**.
-- Correos personales (gmail/outlook/hotmail/yahoo): **0 coincidencias**.
+- Nombre de organización real asociada al desarrollador (validación local, patrón no versionado en ningún archivo): **0 coincidencias** en texto plano ni codificado.
+- Cadenas de conexión (`Server=...;Password=...`): **0 coincidencias**.
 - `.claude/settings.local.json`: confirmado **no rastreado** por git.
 - Archivos `.env` con valores: **0 encontrados**.
 - Proyectos funcionales prematuros (`.csproj`, `.sln`, `angular.json`, `.bicep`, SQL funcional): **0 encontrados**.
+- Sintaxis YAML de `.github/workflows/governance.yml`: **válida** (verificada con `yaml.safe_load`).
+- Sintaxis Bash de los pasos del workflow: **válida** (verificada con `bash -n`).
+- Archivos con espacios en el nombre (caso específico del hallazgo, `docs/evidence/evidencia funcionamiento proxy.png`): confirmado que el nuevo enfoque basado en `git grep`/`git ls-files -z` lo procesa correctamente, sin dividir la ruta.
 
 ## Confirmaciones
 
