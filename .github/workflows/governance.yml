@@ -161,17 +161,18 @@ jobs:
           # que ninguna persona de este proyecto escribio ni controla.
           #
           # Los archivos de pruebas del redactor de salida de Azure CLI
-          # (AzureCliOutputRedactor) necesariamente contienen, en texto plano,
-          # ejemplos de GUID/correo/ruta local *ficticios* como entrada de
-          # prueba, para verificar que el redactor los enmascara. Se excluyen
-          # puntualmente esos dos archivos (no todo tests/) de los escaneos de
-          # ruta/correo/GUID; ningun otro archivo de pruebas queda exento.
+          # (AzureCliOutputRedactor) necesitan ejemplos ficticios de
+          # GUID/correo/ruta local como entrada de prueba, pero los
+          # construyen en tiempo de ejecucion mediante
+          # tests/Centinela.UnitTests/AzureCli/FictitiousExampleBuilder.cs
+          # (string.Join de fragmentos separados) en lugar de escribirlos
+          # como literales contiguos en el codigo fuente. Por eso ningun
+          # archivo de pruebas necesita exclusion de estos escaneos.
           #
-          # infra/modules/key-vault.bicep referencia un roleDefinitionId de un
-          # rol integrado de Azure (Key Vault Secrets User): un GUID publico y
-          # documentado por Microsoft, identico en cualquier tenant, no un
-          # Tenant ID ni Subscription ID. Se excluye puntualmente ese archivo
-          # del escaneo de GUID.
+          # infra/modules/key-vault.bicep no declara ninguna asignacion de
+          # rol RBAC en la Fase 03 (se difiere a la Fase 04, ver CLAUDE.md
+          # seccion 5 e infra/CLAUDE.md), por lo que tampoco contiene ya
+          # ningun roleDefinitionId ni necesita exclusion del escaneo de GUID.
           scan() {
             label="$1"
             pattern="$2"
@@ -195,22 +196,18 @@ jobs:
             fi
           }
 
-          redactor_test_exclude_1=':(exclude,glob)tests/Centinela.UnitTests/AzureCli/AzureCliOutputRedactorTests.cs'
-          redactor_test_exclude_2=':(exclude,glob)tests/Centinela.UnitTests/AzureCli/AzureCliCommandGatewayTests.cs'
-          builtin_role_exclude=':(exclude,glob)infra/modules/key-vault.bicep'
-
           # Secretos y credenciales conocidos (tokens GitHub/AWS/Slack, llaves privadas).
           scan "secretos/credenciales conocidos" '(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
 
           # Rutas locales completas del equipo de desarrollo.
-          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' . "$redactor_test_exclude_1" "$redactor_test_exclude_2"
+          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/'
 
           # Correos electronicos (validacion generica, sin listar proveedores especificos).
           # Excluye lockfiles generados (metadata publica de terceros del registro npm).
-          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' . ':(exclude,glob)**/package-lock.json' "$redactor_test_exclude_1" "$redactor_test_exclude_2"
+          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' . ':(exclude,glob)**/package-lock.json'
 
           # Identificadores tipo GUID sin enmascarar (posible Tenant ID / Subscription ID de Azure).
-          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' . "$redactor_test_exclude_1" "$redactor_test_exclude_2" "$builtin_role_exclude"
+          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 
           if [ "$fail" -eq 1 ]; then
             echo "Escaneo de seguridad: FALLO"

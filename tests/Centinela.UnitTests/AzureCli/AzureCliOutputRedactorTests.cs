@@ -7,18 +7,22 @@ public class AzureCliOutputRedactorTests
     [Fact]
     public void Redact_Guid_IsMasked()
     {
-        var redacted = AzureCliOutputRedactor.Redact("tenantId: 00000000-1111-2222-3333-444444444444");
+        var guid = FictitiousExampleBuilder.Guid();
 
-        Assert.DoesNotContain("00000000-1111-2222-3333-444444444444", redacted);
+        var redacted = AzureCliOutputRedactor.Redact($"tenantId: {guid}");
+
+        Assert.DoesNotContain(guid, redacted);
         Assert.Contains("[REDACTED-GUID]", redacted);
     }
 
     [Fact]
     public void Redact_Email_IsMasked()
     {
-        var redacted = AzureCliOutputRedactor.Redact("contacto: soporte.novacasa@example.com");
+        var email = FictitiousExampleBuilder.Email();
 
-        Assert.DoesNotContain("soporte.novacasa@example.com", redacted);
+        var redacted = AzureCliOutputRedactor.Redact($"contacto: {email}");
+
+        Assert.DoesNotContain(email, redacted);
         Assert.Contains("[REDACTED-EMAIL]", redacted);
     }
 
@@ -66,18 +70,31 @@ public class AzureCliOutputRedactorTests
     [Fact]
     public void Redact_WindowsLocalPath_IsMasked()
     {
-        var redacted = AzureCliOutputRedactor.Redact(@"al ejecutar C:\Users\devuser\repo\infra\main.bicep falló");
+        var path = FictitiousExampleBuilder.WindowsPath();
 
-        Assert.DoesNotContain(@"C:\Users\devuser", redacted);
+        var redacted = AzureCliOutputRedactor.Redact($"al ejecutar {path} falló");
+
+        Assert.DoesNotContain(path, redacted);
         Assert.Contains("[REDACTED-PATH]", redacted);
     }
 
-    [Theory]
-    [InlineData("/home/devuser/repo/infra/main.bicep")]
-    [InlineData("/Users/devuser/repo/infra/main.bicep")]
-    public void Redact_UnixLocalPath_IsMasked(string input)
+    [Fact]
+    public void Redact_HomeLocalPath_IsMasked()
     {
-        var redacted = AzureCliOutputRedactor.Redact(input);
+        var path = FictitiousExampleBuilder.HomePath();
+
+        var redacted = AzureCliOutputRedactor.Redact(path);
+
+        Assert.DoesNotContain("devuser", redacted);
+        Assert.Contains("[REDACTED-PATH]", redacted);
+    }
+
+    [Fact]
+    public void Redact_UsersLocalPath_IsMasked()
+    {
+        var path = FictitiousExampleBuilder.UsersPath();
+
+        var redacted = AzureCliOutputRedactor.Redact(path);
 
         Assert.DoesNotContain("devuser", redacted);
         Assert.Contains("[REDACTED-PATH]", redacted);
@@ -103,13 +120,16 @@ public class AzureCliOutputRedactorTests
     [Fact]
     public void Redact_MultiplePatternsInSameText_AreAllMasked()
     {
-        var input = "tenantId=00000000-1111-2222-3333-444444444444; contact=admin@novacasa.example.com; " +
+        var guid = FictitiousExampleBuilder.Guid();
+        var email = FictitiousExampleBuilder.Email();
+
+        var input = $"tenantId={guid}; contact={email}; " +
                     "AccountKey=abc123; Authorization: Bearer tok123";
 
         var redacted = AzureCliOutputRedactor.Redact(input);
 
-        Assert.DoesNotContain("00000000-1111-2222-3333-444444444444", redacted);
-        Assert.DoesNotContain("admin@novacasa.example.com", redacted);
+        Assert.DoesNotContain(guid, redacted);
+        Assert.DoesNotContain(email, redacted);
         Assert.DoesNotContain("abc123", redacted);
         Assert.DoesNotContain("tok123", redacted);
     }
