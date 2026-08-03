@@ -27,3 +27,8 @@ El proyecto necesita gestionar recursos de Azure de forma trazable, repetible y 
 - Se reduce el riesgo de "configuration drift" entre lo declarado y lo real.
 - Introduce la disciplina adicional de mantener plantillas Bicep válidas y actualizadas.
 - La creación de plantillas Bicep funcionales y el registro de proveedores de Azure se realizan en una fase posterior explícitamente autorizada — no en la Fase 01.
+
+## Actualización — Fase 03 (2026-08-02)
+
+- Implementado `IAzureCliCommandGateway`: única vía permitida para ejecutar Azure CLI desde el código de Centinela. Expone una allowlist tipada y cerrada de operaciones de solo lectura/consulta/validación (p. ej. `account show`, `provider show/list`, `group exists/show`, `bicep build/lint/version`, `deployment sub|group validate/what-if`); cualquier solicitud fuera de esa allowlist lanza `AzureCliOperationNotAllowedException` antes de invocar ningún proceso real. Los argumentos se pasan siempre como lista de tokens discretos (nunca como una cadena interpolada), y toda ejecución queda registrada en una bitácora de auditoría con `CorrelationId`, y con la salida redactada (`AzureCliOutputRedactor`) para enmascarar GUID, correos, rutas locales y credenciales antes de exponerla.
+- Se crearon las plantillas Bicep de DEV (`infra/main.bicep` y módulos en `infra/modules/`), validadas localmente con `az bicep build`, `az bicep lint`, `az deployment sub validate` y `az deployment sub what-if` — sin ejecutar ningún `deployment ... create`, sin registrar proveedores y sin crear ningún recurso real. Detalle completo en [`docs/evidence/phase-03-azure-cli-gateway-iac-report.md`](../../evidence/phase-03-azure-cli-gateway-iac-report.md).

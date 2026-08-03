@@ -4,7 +4,7 @@ Esta carpeta contendrá la infraestructura como código (IaC) de Centinela en **
 
 ## Estado actual
 
-**Sin plantillas Bicep funcionales.** Esta carpeta no debe contener archivos `.bicep` desplegables ni parámetros de entorno hasta que la fase correspondiente del plan sea explícitamente autorizada.
+**Fase 03 (Azure CLI Command Gateway y Bicep IaC) — plantillas Bicep validadas localmente, sin desplegar.** Esta carpeta contiene `main.bicep` (subscription-scoped) y sus módulos (`monitoring`, `storage`, `key-vault`, `app-service`, `sql`), `dev.bicepparam` y scripts de validación (`scripts/validate.*`, `scripts/what-if.*`). Todo se valida con `az bicep build`/`lint` y `az deployment sub validate`/`what-if` exclusivamente — **no se ha creado ningún recurso de Azure, no se ha registrado ningún proveedor y no se ha ejecutado ningún `deployment ... create`**. Ver [`docs/evidence/phase-03-azure-cli-gateway-iac-report.md`](../docs/evidence/phase-03-azure-cli-gateway-iac-report.md) y [ADR-002](../docs/architecture/adr/ADR-002-azure-cli-bicep.md).
 
 ## Reglas cuando se autorice el desarrollo
 
