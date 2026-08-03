@@ -28,6 +28,9 @@ param enableFoundry bool = false
 @description('Habilita recursos de Azure AI Search. Debe permanecer en false hasta autorización explícita.')
 param enableAiSearch bool = false
 
+@description('Habilita la regla de firewall de Azure SQL "AllowAzureServices" (0.0.0.0-0.0.0.0). Debe permanecer en false hasta necesidad concreta y aprobación humana explícita de una regla de alcance mínimo (ver CLAUDE.md, sección 5).')
+param enableSqlAllowAzureServicesRule bool = false
+
 @description('Usuario administrador del servidor lógico de Azure SQL. No tiene valor por defecto: debe suministrarse en tiempo de validación, nunca queda registrado en el archivo de parámetros.')
 param sqlAdministratorLogin string
 
@@ -37,6 +40,15 @@ param sqlAdministratorPassword string
 
 var resourcePrefix = '${companyName}-${projectName}-${environment}'
 var resourceGroupName = 'rg-${resourcePrefix}'
+
+// Sufijo determinista y globalmente único (13 caracteres) para los recursos cuyo nombre debe ser
+// único en todo Azure (Storage Account, Key Vault, Web App, servidor lógico de Azure SQL). Se
+// deriva de subscription().id (función, nunca un literal embebido) y del nombre del resource
+// group: reproducible para la misma suscripción + entorno, sin exponer el Subscription ID como
+// texto en ningún archivo versionado. Resource Group, App Service Plan, Log Analytics y
+// Application Insights mantienen nombres legibles basados solo en resourcePrefix, porque su
+// unicidad requerida es dentro de la suscripción/resource group, no global.
+var uniqueSuffix = uniqueString(subscription().id, resourceGroupName)
 
 var tags = {
   project: 'centinela'
@@ -81,6 +93,7 @@ module storageModule 'modules/storage.bicep' = {
     location: primaryLocation
     resourcePrefix: resourcePrefix
     tags: tags
+    uniqueSuffix: uniqueSuffix
   }
 }
 
@@ -92,6 +105,7 @@ module keyVaultModule 'modules/key-vault.bicep' = {
     location: primaryLocation
     resourcePrefix: resourcePrefix
     tags: tags
+    uniqueSuffix: uniqueSuffix
   }
 }
 
@@ -103,6 +117,7 @@ module appServiceModule 'modules/app-service.bicep' = {
     location: primaryLocation
     resourcePrefix: resourcePrefix
     tags: tags
+    uniqueSuffix: uniqueSuffix
     applicationInsightsConnectionString: monitoringModule.outputs.applicationInsightsConnectionString
   }
 }
@@ -115,8 +130,10 @@ module sqlModule 'modules/sql.bicep' = {
     location: primaryLocation
     resourcePrefix: resourcePrefix
     tags: tags
+    uniqueSuffix: uniqueSuffix
     sqlAdministratorLogin: sqlAdministratorLogin
     sqlAdministratorPassword: sqlAdministratorPassword
+    enableAllowAzureServicesFirewallRule: enableSqlAllowAzureServicesRule
   }
 }
 

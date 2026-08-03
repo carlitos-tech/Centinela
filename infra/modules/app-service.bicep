@@ -10,6 +10,9 @@ param tags object
 @description('Cadena de conexión de Application Insights, inyectada como app setting de la Web App.')
 param applicationInsightsConnectionString string
 
+@description('Sufijo determinista de 13 caracteres (uniqueString), calculado en main.bicep, para garantizar unicidad global del nombre (subdominio *.azurewebsites.net).')
+param uniqueSuffix string
+
 resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   name: 'plan-${resourcePrefix}'
   location: location
@@ -25,7 +28,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
 }
 
 resource webApp 'Microsoft.Web/sites@2024-11-01' = {
-  name: 'app-${resourcePrefix}-api'
+  name: 'app-${resourcePrefix}-${uniqueSuffix}-api'
   location: location
   tags: tags
   properties: {

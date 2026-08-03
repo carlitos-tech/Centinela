@@ -9,6 +9,7 @@ param monthlyBudgetUsd = 50
 param retentionDays = 30
 param enableFoundry = false
 param enableAiSearch = false
+param enableSqlAllowAzureServicesRule = false
 
 // sqlAdministratorLogin y sqlAdministratorPassword se leen de variables de entorno efímeras
 // (readEnvironmentVariable) en vez de tener un valor literal aquí: un archivo .bicepparam con

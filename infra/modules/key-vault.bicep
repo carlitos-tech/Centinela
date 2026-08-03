@@ -7,7 +7,13 @@ param resourcePrefix string
 @description('Tags obligatorias aplicadas al recurso.')
 param tags object
 
-var keyVaultName = take(toLower(replace('kv-${resourcePrefix}', '--', '-')), 24)
+@description('Sufijo determinista de 13 caracteres (uniqueString), calculado en main.bicep, para garantizar unicidad global del nombre.')
+param uniqueSuffix string
+
+// Presupuesto de longitud (máx. 24, Key Vault): 'kv-' (3) + namePrefix (7) + '-' (1) +
+// uniqueSuffix (13) = 24 exactos, de modo que uniqueSuffix nunca se trunca.
+var namePrefix = take(toLower(replace(resourcePrefix, '-', '')), 7)
+var keyVaultName = take('kv-${namePrefix}-${uniqueSuffix}', 24)
 
 resource keyVault 'Microsoft.KeyVault/vaults@2024-11-01' = {
   name: keyVaultName
