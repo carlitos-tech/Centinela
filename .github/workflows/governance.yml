@@ -97,19 +97,31 @@ jobs:
 
       # A partir de la Fase 02 (walking skeleton local), src/ y web/ estan
       # explicitamente autorizados a contener proyectos .NET/Angular
-      # funcionales (ver CLAUDE.md, seccion 13). infra/ (IaC/Bicep) y
-      # database/ (SQL funcional) permanecen sin autorizar hasta su propia
-      # fase dedicada, por lo que este chequeo sigue bloqueando esos dos.
-      - name: Verificar ausencia de proyectos funcionales prematuros (infra/database)
+      # funcionales (ver CLAUDE.md, seccion 13). A partir de la Fase 03,
+      # infra/ esta explicitamente autorizado a contener plantillas Bicep
+      # (IaC declarativa, validada localmente con bicep build/lint y
+      # az deployment sub validate/what-if, sin desplegar ningun recurso:
+      # ver ADR-002 y docs/evidence/phase-03-azure-cli-gateway-iac-report.md).
+      # Cualquier archivo .bicep FUERA de infra/ sigue bloqueado, igual que
+      # database/ (SQL funcional), que permanece sin autorizar hasta su
+      # propia fase dedicada.
+      - name: Verificar ausencia de proyectos funcionales prematuros (infra fuera de alcance/database)
         shell: bash
         run: |
           set -e
           found=0
 
-          bicep_matches=$(git ls-files -z -- '*.bicep' | tr '\0' '\n')
-          if [ -n "$bicep_matches" ]; then
-            echo "ERROR: se encontraron archivos Bicep no autorizados:"
-            printf '%s\n' "$bicep_matches"
+          bicep_outside_infra=$(git ls-files -z -- '*.bicep' ':(exclude)infra/**' | tr '\0' '\n')
+          if [ -n "$bicep_outside_infra" ]; then
+            echo "ERROR: se encontraron archivos Bicep fuera de infra/ (no autorizados):"
+            printf '%s\n' "$bicep_outside_infra"
+            found=1
+          fi
+
+          bicepparam_outside_infra=$(git ls-files -z -- '*.bicepparam' ':(exclude)infra/**' | tr '\0' '\n')
+          if [ -n "$bicepparam_outside_infra" ]; then
+            echo "ERROR: se encontraron archivos de parametros Bicep fuera de infra/ (no autorizados):"
+            printf '%s\n' "$bicepparam_outside_infra"
             found=1
           fi
 
@@ -147,16 +159,29 @@ jobs:
           # registro npm, no datos del equipo de desarrollo). Se excluye del
           # escaneo de correos para evitar falsos positivos sobre contenido
           # que ninguna persona de este proyecto escribio ni controla.
+          #
+          # Los archivos de pruebas del redactor de salida de Azure CLI
+          # (AzureCliOutputRedactor) necesariamente contienen, en texto plano,
+          # ejemplos de GUID/correo/ruta local *ficticios* como entrada de
+          # prueba, para verificar que el redactor los enmascara. Se excluyen
+          # puntualmente esos dos archivos (no todo tests/) de los escaneos de
+          # ruta/correo/GUID; ningun otro archivo de pruebas queda exento.
+          #
+          # infra/modules/key-vault.bicep referencia un roleDefinitionId de un
+          # rol integrado de Azure (Key Vault Secrets User): un GUID publico y
+          # documentado por Microsoft, identico en cualquier tenant, no un
+          # Tenant ID ni Subscription ID. Se excluye puntualmente ese archivo
+          # del escaneo de GUID.
           scan() {
             label="$1"
             pattern="$2"
-            extra_pathspec="${3:-}"
-            rc=0
-            if [ -n "$extra_pathspec" ]; then
-              git grep -zIlE "$pattern" -- . "$extra_pathspec" > /tmp/gg_hits 2> /tmp/gg_err || rc=$?
-            else
-              git grep -zIlE "$pattern" > /tmp/gg_hits 2> /tmp/gg_err || rc=$?
+            shift 2
+            pathspecs=("$@")
+            if [ "${#pathspecs[@]}" -eq 0 ]; then
+              pathspecs=(".")
             fi
+            rc=0
+            git grep -zIlE "$pattern" -- "${pathspecs[@]}" > /tmp/gg_hits 2> /tmp/gg_err || rc=$?
             if [ "$rc" -eq 0 ]; then
               echo "ERROR: $label detectado(s) en archivos versionados:"
               tr '\0' '\n' < /tmp/gg_hits
@@ -170,18 +195,22 @@ jobs:
             fi
           }
 
+          redactor_test_exclude_1=':(exclude,glob)tests/Centinela.UnitTests/AzureCli/AzureCliOutputRedactorTests.cs'
+          redactor_test_exclude_2=':(exclude,glob)tests/Centinela.UnitTests/AzureCli/AzureCliCommandGatewayTests.cs'
+          builtin_role_exclude=':(exclude,glob)infra/modules/key-vault.bicep'
+
           # Secretos y credenciales conocidos (tokens GitHub/AWS/Slack, llaves privadas).
           scan "secretos/credenciales conocidos" '(ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{10,})'
 
           # Rutas locales completas del equipo de desarrollo.
-          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/'
+          scan "rutas locales completas" 'C:\\Users\\[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+/' . "$redactor_test_exclude_1" "$redactor_test_exclude_2"
 
           # Correos electronicos (validacion generica, sin listar proveedores especificos).
           # Excluye lockfiles generados (metadata publica de terceros del registro npm).
-          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' ':(exclude,glob)**/package-lock.json'
+          scan "correos electronicos" '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' . ':(exclude,glob)**/package-lock.json' "$redactor_test_exclude_1" "$redactor_test_exclude_2"
 
           # Identificadores tipo GUID sin enmascarar (posible Tenant ID / Subscription ID de Azure).
-          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+          scan "identificadores tipo GUID (Tenant/Subscription ID) sin enmascarar" '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' . "$redactor_test_exclude_1" "$redactor_test_exclude_2" "$builtin_role_exclude"
 
           if [ "$fail" -eq 1 ]; then
             echo "Escaneo de seguridad: FALLO"
