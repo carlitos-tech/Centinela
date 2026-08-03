@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Centinela.Api\Centinela.Api.csproj" />
     <ProjectReference Include="..\..\src\Centinela.Domain\Centinela.Domain.csproj" />
     <ProjectReference Include="..\..\src\Centinela.Application\Centinela.Application.csproj" />
+    <ProjectReference Include="..\..\src\Centinela.Infrastructure\Centinela.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
