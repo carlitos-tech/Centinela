@@ -1,11 +1,13 @@
-# Estimación de costos — Infraestructura DEV (Fase 03)
+# Estimación de costos — Infraestructura DEV (Fase 03, revisada en Fase 04)
 
 Estimación de referencia, no una factura. Los precios de Azure varían por región, divisa,
 promociones vigentes y consumo real; esta tabla usa los precios de lista consultados en las
 fuentes oficiales citadas y **no** sustituye a la Calculadora de precios de Azure ni a Cost
 Management una vez exista una suscripción real con consumo.
 
-- **Fecha de consulta:** 2026-08-02.
+- **Fecha de consulta:** 2026-08-02. **Revisado sin cambios de precio:** 2026-08-03 (Fase 04,
+  preparación de despliegue), tras el endurecimiento de nombres únicos globales y de la regla de
+  firewall de Azure SQL — ninguno de los dos cambios afecta el costo (ver más abajo).
 - **Región de referencia:** East US 2 (principal). Central US (alterna) no se cotiza aquí; se
   documenta como opción de conmutación manual si East US 2 no tuviera disponibilidad de algún SKU.
 - **Supuestos:** carga de desarrollo/demo (tráfico bajo, sin escalado horizontal, sin alta
@@ -22,6 +24,7 @@ Management una vez exista una suscripción real con consumo.
 | Log Analytics Workspace + Application Insights | PerGB2018 | ~0–3 | Primeros 5 GB de ingesta por mes sin costo por suscripción; una carga de demo normalmente no supera ese umbral. Application Insights se factura sobre el mismo volumen de ingesta (sin cargo adicional independiente). Ver [precios de Azure Monitor](https://azure.microsoft.com/pricing/details/monitor/). |
 | Key Vault | Standard | <1 | Facturado por operación (~$0.03 por 10.000 operaciones); volumen de demo es marginal. Ver [precios de Key Vault](https://azure.microsoft.com/pricing/details/key-vault/). |
 | Resource Group | — | 0 | El Resource Group en sí no tiene costo. |
+| Regla de firewall de Azure SQL "AllowAzureServices" | — | 0 | **No se crea en esta fase** (`enableSqlAllowAzureServicesRule = false` en `dev.bicepparam`, Fase 04 Paso 7): el recurso queda condicionado y no aparece en el `what-if`. Aunque se habilitara, las reglas de firewall de Azure SQL no tienen costo propio. |
 
 ## Total estimado
 
@@ -34,6 +37,15 @@ supera el nivel gratuito o el tráfico de demo es mayor al supuesto.
 - **Límite absoluto del proyecto:** USD 50/mes (ver `CLAUDE.md`, sección 5). Si una revisión futura
   de esta arquitectura proyectara superar este límite, el diseño debe bloquearse y revisarse antes
   de cualquier despliegue real.
+
+## Recursos esperados en el `what-if` (Fase 04)
+
+Con `enableSqlAllowAzureServicesRule = false`, `enableFoundry = false` y `enableAiSearch = false`,
+el `what-if` de la Fase 04 debe previsualizar **9 recursos, los 9 de tipo `Create`**: Resource
+Group, Log Analytics Workspace, Application Insights, Key Vault, Storage Account, App Service
+Plan, Web App y servidor + base de datos de Azure SQL. El cambio de nombres a `uniqueString()`
+(Fase 04, Paso 5) no agrega ni quita recursos ni afecta el SKU de ninguno — no tiene impacto en
+costo.
 
 ## Componentes deliberadamente excluidos de esta estimación
 
