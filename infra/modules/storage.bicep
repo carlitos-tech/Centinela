@@ -7,12 +7,16 @@ param resourcePrefix string
 @description('Tags obligatorias aplicadas al recurso.')
 param tags object
 
+@description('Sufijo determinista de 13 caracteres (uniqueString), calculado en main.bicep, para garantizar unicidad global del nombre.')
+param uniqueSuffix string
+
 // Los nombres de Storage Account son globalmente únicos, 3-24 caracteres, solo minúsculas y
-// dígitos: se elimina cualquier guion del prefijo y se trunca a 24 caracteres. El linter no puede
-// probar estáticamente una longitud mínima a partir de una interpolación de parámetros (BCP334);
-// el prefijo 'st' ya garantiza en tiempo de ejecución al menos 2 caracteres más el contenido de
-// resourcePrefix, que en este proyecto siempre es no vacío (companyName-projectName-environment).
-var storageAccountName = take(toLower(replace('st${resourcePrefix}', '-', '')), 24)
+// dígitos. Presupuesto de longitud: 'st' (2) + namePrefix (9) + uniqueSuffix (13) = 24 exactos, de
+// modo que uniqueSuffix nunca se trunca (es la garantía real de unicidad global). El linter no
+// puede probar estáticamente una longitud mínima a partir de una interpolación de parámetros
+// (BCP334); namePrefix + uniqueSuffix siempre producen contenido no vacío.
+var namePrefix = take(toLower(replace(resourcePrefix, '-', '')), 9)
+var storageAccountName = take('st${namePrefix}${uniqueSuffix}', 24)
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = {
 #disable-next-line BCP334
@@ -26,14 +30,19 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = {
   properties: {
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
-    allowBlobPublicAccess: true
+    allowBlobPublicAccess: false
   }
 }
 
-// El hosting de sitio estático (contenedor `$web`) es una operación de plano de datos
+// Endurecimiento (Fase 04, Paso 6): allowBlobPublicAccess=false — ningún contenedor puede
+// exponerse anónimamente aunque su nivel de acceso individual se configure erróneamente después.
+// No se declara ningún contenedor ni configuración de sitio estático en este módulo: la decisión
+// de dónde alojar el frontend (Web App vs. Storage static website) se difiere a una fase posterior
+// de despliegue real, y de habilitarse un sitio estático más adelante, requerirá una decisión
+// explícita separada que reconsidere este `allowBlobPublicAccess=false` para el contenedor `$web`
+// específicamente (el static website de Storage exige acceso público de lectura a ese contenedor).
+// El hosting de sitio estático es, en cualquier caso, una operación de plano de datos
 // (`az storage blob service-properties update --static-website`), no un recurso ARM/Bicep
-// declarativo en la API de Storage; se documenta aquí y se ejecuta, si corresponde, en una fase
-// posterior de despliegue real — no se declara como recurso Bicep para evitar modelar un tipo de
-// recurso inexistente.
+// declarativo en la API de Storage.
 
 output storageAccountName string = storageAccount.name

@@ -5,9 +5,10 @@ Relaciona fases del proyecto, issues, ADRs y evidencia. Se actualiza al cierre d
 | Fase | Issue | Rama | ADRs relacionados | Evidencia | Estado |
 |------|-------|------|--------------------|-----------|--------|
 | Fase 00 — Preflight | — | — | — | [`docs/evidence/preflight-report.md`](../evidence/preflight-report.md) | PASS CON OBSERVACIONES |
-| Fase 01 — Gobierno del repositorio | [#1](https://github.com/carlitos-tech/Centinela/issues/1) | `chore/phase-01-repository-governance` | ADR-001, ADR-002, ADR-003 | [`docs/evidence/phase-01-governance-report.md`](../evidence/phase-01-governance-report.md) | En curso |
+| Fase 01 — Gobierno del repositorio | [#1](https://github.com/carlitos-tech/Centinela/issues/1) (cerrado) | `chore/phase-01-repository-governance` | ADR-001, ADR-002, ADR-003 | [`docs/evidence/phase-01-governance-report.md`](../evidence/phase-01-governance-report.md) | Fusionada — [PR #2](https://github.com/carlitos-tech/Centinela/pull/2) fusionado |
 | Fase 02 — Walking skeleton local | [#3](https://github.com/carlitos-tech/Centinela/issues/3) (cerrado) | `feat/phase-02-local-walking-skeleton` | ADR-001, ADR-003 | [`docs/evidence/phase-02-walking-skeleton-report.md`](../evidence/phase-02-walking-skeleton-report.md) | Fusionada — [PR #4](https://github.com/carlitos-tech/Centinela/pull/4) fusionado |
-| Fase 03 — Azure CLI Command Gateway y Bicep IaC | [#5](https://github.com/carlitos-tech/Centinela/issues/5) | `feat/phase-03-azure-cli-gateway-iac` | ADR-002 | [`docs/evidence/phase-03-azure-cli-gateway-iac-report.md`](../evidence/phase-03-azure-cli-gateway-iac-report.md) | Implementada — [PR #6](https://github.com/carlitos-tech/Centinela/pull/6) abierto, pendiente de aprobación humana (sin fusionar) |
+| Fase 03 — Azure CLI Command Gateway y Bicep IaC | [#5](https://github.com/carlitos-tech/Centinela/issues/5) (cerrado) | `feat/phase-03-azure-cli-gateway-iac` | ADR-002 | [`docs/evidence/phase-03-azure-cli-gateway-iac-report.md`](../evidence/phase-03-azure-cli-gateway-iac-report.md) | Fusionada — [PR #6](https://github.com/carlitos-tech/Centinela/pull/6) fusionado |
+| Fase 04 — Bootstrap Azure DEV | [#7](https://github.com/carlitos-tech/Centinela/issues/7) | `feat/phase-04-bootstrap-azure-dev` | ADR-002, ADR-003 | [`docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md`](../evidence/phase-04-bootstrap-azure-dev-predeployment-report.md) | En preparación — sin desplegar, PR pendiente de apertura |
 
 ## Notas
 
