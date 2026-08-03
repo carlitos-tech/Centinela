@@ -45,7 +45,13 @@ public sealed class AzureCliProcessRunner : IAzureCliProcessRunner
         catch (OperationCanceledException)
         {
             timedOut = timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
-            TryKill(process);
+
+            // Kill() solo solicita la terminación; no garantiza que el árbol de procesos ya haya
+            // terminado al retornar. Sin esperar aquí, el método podría devolver el control mientras
+            // el proceso (y sus hijos) siguen vivos —proceso huérfano— y mientras los manejadores de
+            // OutputDataReceived/ErrorDataReceived todavía escriben de forma asíncrona en stdOut/
+            // stdErr, en carrera con el ToString() de más abajo.
+            await KillAndWaitAsync(process).ConfigureAwait(false);
 
             if (!timedOut)
             {
@@ -81,7 +87,7 @@ public sealed class AzureCliProcessRunner : IAzureCliProcessRunner
         builder.AppendLine(line);
     }
 
-    private static void TryKill(Process process)
+    private static async Task KillAndWaitAsync(Process process)
     {
         try
         {
@@ -93,6 +99,22 @@ public sealed class AzureCliProcessRunner : IAzureCliProcessRunner
         catch
         {
             // El proceso ya pudo haber terminado entre la verificación y el intento de matarlo.
+        }
+
+        try
+        {
+            // Espera acotada: Kill() ya fue solicitado, así que el sistema operativo debería
+            // terminar el árbol de procesos casi de inmediato. El límite de seguridad evita que una
+            // condición extrema (p. ej. un proceso hijo que ignore la señal) bloquee indefinidamente
+            // al llamador de RunAsync.
+            using var killWaitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await process.WaitForExitAsync(killWaitCts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // El proceso ya pudo haber terminado, el handle ya no es válido, o se agotó el margen
+            // de seguridad de 5 segundos; en cualquier caso Kill() ya fue solicitado y no hay más
+            // que esperar de forma segura.
         }
     }
 
