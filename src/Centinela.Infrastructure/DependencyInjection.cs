@@ -1,7 +1,9 @@
 using Centinela.Application.Abstractions;
+using Centinela.Application.Abstractions.AzureCli;
 using Centinela.Application.Orchestration;
 using Centinela.Application.Plugins;
 using Centinela.Application.Skills;
+using Centinela.Infrastructure.AzureCli;
 using Centinela.Infrastructure.Gateways;
 using Centinela.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +14,10 @@ namespace Centinela.Infrastructure;
 /// Composición de dependencias del walking skeleton local: repositorios en memoria,
 /// FakeModelGateway, skills, plugin y agente. No registra ningún servicio de Azure ni
 /// ningún modelo de IA real.
+///
+/// El único componente que toca Azure es <see cref="IAzureCliCommandGateway"/>, y solo ejecuta
+/// operaciones de solo lectura o validación (allowlist en <see cref="AzureCliCommandPolicy"/>);
+/// no crea, modifica ni elimina ningún recurso de Azure.
 /// </summary>
 public static class DependencyInjection
 {
@@ -21,6 +27,10 @@ public static class DependencyInjection
         services.AddSingleton<IPolicyRepository, InMemoryPolicyRepository>();
         services.AddSingleton<ITraceRepository, InMemoryTraceRepository>();
         services.AddSingleton<IModelGateway, FakeModelGateway>();
+
+        services.AddSingleton<IAzureCliProcessRunner, AzureCliProcessRunner>();
+        services.AddSingleton<IAzureCliAuditSink, InMemoryAzureCliAuditSink>();
+        services.AddSingleton<IAzureCliCommandGateway, AzureCliCommandGateway>();
 
         services.AddScoped<ClassifyIntentSkill>();
         services.AddScoped<SearchCatalogSkill>();
