@@ -24,7 +24,7 @@ Proyecto → Agentes → Plugins → Skills → Artifacts
 |------------|---------|--------|
 | Backend (.NET, Clean Architecture) | `src/` | Fase 02: walking skeleton local implementado ([PR #4](https://github.com/carlitos-tech/Centinela/pull/4), pendiente de aprobación) |
 | Frontend (Chat Web) | `web/` | Fase 02: walking skeleton local implementado ([PR #4](https://github.com/carlitos-tech/Centinela/pull/4), pendiente de aprobación) |
-| Infraestructura (Bicep) | `infra/` | Fase 03: plantillas Bicep de DEV validadas localmente (`bicep build`/`lint`, `deployment sub validate`/`what-if`); ningún recurso creado |
+| Infraestructura (Bicep) | `infra/` | Fase 03: plantillas Bicep de DEV validadas localmente (`bicep build`/`lint`, `deployment sub validate`/`what-if`); ningún recurso creado ([PR #6](https://github.com/carlitos-tech/Centinela/pull/6), pendiente de aprobación) |
 | Base de datos | `database/` | Sin scripts funcionales (pendiente de fase) |
 
 ### Implementación real de la Fase 02
