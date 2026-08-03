@@ -12,35 +12,54 @@ los comandos anteriores sin una autorización humana explícita separada.
 
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'lib/AzExec.ps1')
+
 $infraDir = Resolve-Path (Join-Path $PSScriptRoot '..')
 $mainTemplate = Join-Path $infraDir 'main.bicep'
 $paramsFile = Join-Path $infraDir 'dev.bicepparam'
 
-$sqlAdminLogin = Read-Host 'Usuario administrador temporal de Azure SQL (solo para what-if, no se guarda)'
-$sqlPasswordSecure = Read-Host -AsSecureString 'Contraseña temporal de administrador de Azure SQL (solo en memoria, no se guarda)'
-$sqlPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sqlPasswordSecure)
-)
-
 try {
-    # dev.bicepparam lee estas dos variables vía readEnvironmentVariable(); nunca se pasan como
-    # argumento de línea de comandos ni quedan escritas en disco.
-    $env:CENTINELA_SQL_ADMIN_LOGIN = $sqlAdminLogin
-    $env:CENTINELA_SQL_ADMIN_PASSWORD = $sqlPasswordPlain
+    $sqlAdminLogin = Read-Host 'Usuario administrador temporal de Azure SQL (solo para what-if, no se guarda)'
+    $sqlPasswordSecure = Read-Host -AsSecureString 'Contraseña temporal de administrador de Azure SQL (solo en memoria, no se guarda)'
 
-    Write-Host '== az deployment sub what-if (East US 2) =='
-    az deployment sub what-if `
-        --location eastus2 `
-        --template-file $mainTemplate `
-        --parameters $paramsFile `
-        --only-show-errors
-}
-finally {
-    $sqlPasswordPlain = $null
-    $sqlAdminLogin = $null
-    Remove-Item Env:\CENTINELA_SQL_ADMIN_LOGIN -ErrorAction SilentlyContinue
-    Remove-Item Env:\CENTINELA_SQL_ADMIN_PASSWORD -ErrorAction SilentlyContinue
-    [System.GC]::Collect()
-}
+    # Se conserva el puntero BSTR para poder liberarlo explícitamente con ZeroFreeBSTR en el
+    # finally más interno: GC.Collect() no libera memoria no administrada y no es un sustituto
+    # válido de esa liberación explícita.
+    $sqlPasswordBstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sqlPasswordSecure)
 
-Write-Host 'what-if completo. Ningún cambio fue aplicado: este comando solo previsualiza.'
+    try {
+        $sqlPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($sqlPasswordBstr)
+
+        try {
+            # dev.bicepparam lee estas dos variables vía readEnvironmentVariable(); nunca se pasan
+            # como argumento de línea de comandos ni quedan escritas en disco.
+            $env:CENTINELA_SQL_ADMIN_LOGIN = $sqlAdminLogin
+            $env:CENTINELA_SQL_ADMIN_PASSWORD = $sqlPasswordPlain
+
+            Invoke-AzCommand -StepName 'az deployment sub what-if (East US 2)' -Arguments @(
+                'deployment', 'sub', 'what-if',
+                '--location', 'eastus2',
+                '--template-file', $mainTemplate,
+                '--parameters', $paramsFile,
+                '--only-show-errors'
+            )
+        }
+        finally {
+            $sqlPasswordPlain = $null
+            $sqlAdminLogin = $null
+            Remove-Item Env:\CENTINELA_SQL_ADMIN_LOGIN -ErrorAction SilentlyContinue
+            Remove-Item Env:\CENTINELA_SQL_ADMIN_PASSWORD -ErrorAction SilentlyContinue
+        }
+    }
+    finally {
+        if ($sqlPasswordBstr -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($sqlPasswordBstr)
+        }
+    }
+
+    Write-Host 'what-if completo. Ningun cambio fue aplicado: este comando solo previsualiza.'
+}
+catch {
+    Write-Error "Fallo el what-if de Centinela (Fase 03): $($_.Exception.Message)"
+    exit 1
+}
