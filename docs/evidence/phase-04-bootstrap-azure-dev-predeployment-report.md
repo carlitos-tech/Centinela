@@ -1005,6 +1005,92 @@ Hasta que se resuelva el cupo, `az deployment sub validate` seguirá fallando y 
 **no puede** completarse. Conforme a la autorización, **no se ejecutó `what-if`** y no se avanzó a
 ningún despliegue.
 
+## 19. Solicitud de aumento de cuota B1 vía Azure Quota API — **RECHAZADA** (`QuotaNotAvailableForResource`) (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-solicitar-cuota-b1]`, acotada a **exactamente una**
+solicitud de aumento de cuota por Azure CLI. Prohibidos expresamente: `az quota create`, un segundo
+`az quota update`, solicitar cuota para otro SKU, abrir ticket de soporte, registrar proveedores,
+cambiar RBAC, `deployment sub validate`, `what-if`, `deployment sub create`, crear o modificar
+recursos, cambiar Bicep, fusionar el PR #8, cerrar el Issue #7 e iniciar la Fase 05.
+
+### 19.1 Solicitud realizada
+
+| Dato | Valor |
+|---|---|
+| Proveedor | `Microsoft.Web` |
+| Región | East US 2 (`eastus2`) |
+| Cuota | **`B1`** (`B1 VMs`, unidad `Instances`, `limitType: Independent`) |
+| Límite anterior | **0** |
+| Límite solicitado | **1** |
+| Solicitudes emitidas | **Exactamente una**, sin reintentos |
+
+Comando lógico, sin identificadores:
+
+```text
+az quota update --resource-name B1
+   --scope /subscriptions/<SUBSCRIPTION_ID>/providers/Microsoft.Web/locations/eastus2
+   --limit-object value=1 --output json --only-show-errors
+```
+
+Precondiciones verificadas antes de ejecutar: rama `feat/phase-04-bootstrap-azure-dev`; HEAD local y
+remoto `1630bee`; árbol limpio; workflow de gobernanza en verde; Azure CLI autenticado mediante
+consulta real (cuenta `Enabled`); suscripción coincidente con `CENTINELA_EXPECTED_SUBSCRIPTION_ID`
+(valor **nunca impreso**); `az quota show` confirmando `resource-name = B1`, región `eastus2`,
+límite actual `0` e `isQuotaApplicable = true`; `rg-novacasa-centinela-dev` inexistente; cero
+recursos, cero grupos y cero deployments en la suscripción.
+
+### 19.2 Estado saneado del resultado
+
+**FAILED.** Código de salida 1.
+
+| Campo | Valor saneado |
+|---|---|
+| Código | **`QuotaNotAvailableForResource`** |
+| Mensaje | `Request failed.` (genérico, sin causa adicional) |
+
+Conforme a la instrucción del resultado D de la autorización: **no se reintentó**, **no se cambió de
+región ni de SKU**, y **no se abrió ningún ticket de soporte**.
+
+### 19.3 Verificación posterior
+
+| Confirmación | Estado |
+|---|---|
+| Límite de `B1` después de la solicitud | **0** (sin cambio) |
+| `isQuotaApplicable` de `B1` | `true` (sin cambio) |
+| `az group exists --name rg-novacasa-centinela-dev` | `false` |
+| Recursos de Azure creados | **Cero** (`az resource list` → 0) |
+| Grupos de recursos | **Cero** |
+| Deployments registrados | **Cero** |
+| Segunda solicitud de cuota | **No emitida** |
+| `az quota create` | No ejecutado |
+| Cuotas solicitadas para otros SKU | Ninguna |
+| Tickets de soporte abiertos | Ninguno |
+| Proveedores registrados | Ninguno |
+| Cambios de RBAC | Ninguno |
+| `deployment sub validate` / `what-if` / `deployment sub create` | **No ejecutados** |
+| Archivos de Bicep, scripts o pruebas modificados | Ninguno |
+| `--debug` / `--verbose` | No usados |
+| Subscription ID / Tenant ID / scope completo / Request ID / identificadores ARM / correos impresos o guardados | Ninguno |
+| PR #8 | **OPEN, DRAFT, sin fusionar** |
+| Issue #7 | **Abierto** |
+| Fase 05 | No iniciada |
+
+### 19.4 Interpretación
+
+`QuotaNotAvailableForResource` indica que el aumento de cuota para `B1` en East US 2 **no está
+disponible por autoservicio** en esta suscripción. Es coherente con el patrón observado en el
+diagnóstico previo: no se trata de un cupo consumido que pueda ampliarse, sino de un SKU que Azure
+no está ofreciendo a esta suscripción en esa región. La vía de la Azure Quota API queda **agotada**
+para este SKU y esta región.
+
+### 19.5 Próxima decisión humana
+
+El bloqueo de la sección 18 **sigue vigente y sin resolver**: `az deployment sub validate` seguirá
+fallando con `SubscriptionIsOverQuotaForSku` mientras `B1` tenga límite 0 en East US 2. La Azure
+Quota API ya no ofrece camino. Se requiere **autorización humana explícita** para elegir y ejecutar
+cualquier vía alternativa; **ninguna se ejecutó ni se preparó**. No se ejecutó `validate`, ni
+`what-if`, ni despliegue alguno.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
@@ -1090,3 +1176,7 @@ ningún despliegue.
    revisar el SKU, teniendo en cuenta que el cupo agotado es de instancias (`Total VMs`) y que un
    cambio de nivel podría no resolverlo por sí solo. Se requiere **autorización humana explícita**
    para cualquiera de ellas y, por separado, para un futuro `what-if`.
+   **Actualización (sección 19):** la vía (a) fue autorizada y ejecutada **exactamente una vez**
+   mediante `az quota update` y quedó **rechazada** con `QuotaNotAvailableForResource`; el límite de
+   `B1` sigue en 0. La Azure Quota API ya no ofrece camino para este SKU en esta región. El bloqueo
+   **sigue vigente** y la elección de vía alternativa requiere una nueva autorización humana.
