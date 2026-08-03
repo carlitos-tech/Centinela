@@ -28,9 +28,6 @@ param enableFoundry bool = false
 @description('Habilita recursos de Azure AI Search. Debe permanecer en false hasta autorización explícita.')
 param enableAiSearch bool = false
 
-@description('Habilita la creación declarativa de asignaciones de rol RBAC. Debe permanecer en false hasta aprobación humana explícita (ver CLAUDE.md, sección 5).')
-param enableRoleAssignments bool = false
-
 @description('Usuario administrador del servidor lógico de Azure SQL. No tiene valor por defecto: debe suministrarse en tiempo de validación, nunca queda registrado en el archivo de parámetros.')
 param sqlAdministratorLogin string
 
@@ -59,9 +56,15 @@ module resourceGroupModule 'modules/resource-group.bicep' = {
   }
 }
 
+// Bicep exige que "scope" se pueda calcular al inicio del despliegue (BCP120): no admite una
+// referencia a resourceGroupModule.outputs.resourceGroupName (valor conocido solo tras desplegar
+// el módulo). Por eso el scope sigue usando la variable resourceGroupName, y la dependencia sobre
+// resourceGroupModule se declara explícitamente con dependsOn en cada módulo de resource-group
+// scope, para que Azure garantice que el resource group existe antes de estos nested deployments.
 module monitoringModule 'modules/monitoring.bicep' = {
   name: 'monitoringDeployment'
   scope: resourceGroup(resourceGroupName)
+  dependsOn: [resourceGroupModule]
   params: {
     location: primaryLocation
     resourcePrefix: resourcePrefix
@@ -73,6 +76,7 @@ module monitoringModule 'modules/monitoring.bicep' = {
 module storageModule 'modules/storage.bicep' = {
   name: 'storageDeployment'
   scope: resourceGroup(resourceGroupName)
+  dependsOn: [resourceGroupModule]
   params: {
     location: primaryLocation
     resourcePrefix: resourcePrefix
@@ -83,17 +87,18 @@ module storageModule 'modules/storage.bicep' = {
 module keyVaultModule 'modules/key-vault.bicep' = {
   name: 'keyVaultDeployment'
   scope: resourceGroup(resourceGroupName)
+  dependsOn: [resourceGroupModule]
   params: {
     location: primaryLocation
     resourcePrefix: resourcePrefix
     tags: tags
-    enableRoleAssignments: enableRoleAssignments
   }
 }
 
 module appServiceModule 'modules/app-service.bicep' = {
   name: 'appServiceDeployment'
   scope: resourceGroup(resourceGroupName)
+  dependsOn: [resourceGroupModule]
   params: {
     location: primaryLocation
     resourcePrefix: resourcePrefix
@@ -105,6 +110,7 @@ module appServiceModule 'modules/app-service.bicep' = {
 module sqlModule 'modules/sql.bicep' = {
   name: 'sqlDeployment'
   scope: resourceGroup(resourceGroupName)
+  dependsOn: [resourceGroupModule]
   params: {
     location: primaryLocation
     resourcePrefix: resourcePrefix

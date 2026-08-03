@@ -33,7 +33,7 @@ infra/
 |---|---|---|
 | Resource Group | Contenedor de todos los recursos de DEV | Sin costo |
 | Storage Account (StorageV2, Standard_LRS) | Almacenamiento general; hosting de sitio estático se configura en plano de datos, fuera de este Bicep | Bajo costo |
-| Key Vault (Standard, RBAC) | Gestión de secretos; sin asignaciones de rol por defecto | Bajo costo |
+| Key Vault (Standard, RBAC) | Gestión de secretos; sin ninguna asignación de rol RBAC (se difiere a Fase 04) | Bajo costo |
 | Log Analytics + Application Insights | Observabilidad | Nivel gratuito hasta 5 GB/mes |
 | App Service Plan (Linux, B1) + Web App | Hosting de la API .NET | Ver `cost/dev-cost-estimate.md` |
 | Azure SQL Server + Database (Basic) | Base de datos futura | Ver `cost/dev-cost-estimate.md` |
@@ -46,7 +46,7 @@ declara ningún recurso activo para ellos en esta fase.
 
 `environment=dev`, `primaryLocation=eastus2`, `fallbackLocation=centralus`,
 `projectName=centinela`, `companyName=novacasa`, `monthlyBudgetUsd=50`, `retentionDays=30`,
-`enableFoundry=false`, `enableAiSearch=false`, `enableRoleAssignments=false`.
+`enableFoundry=false`, `enableAiSearch=false`.
 
 `sqlAdministratorLogin` y `sqlAdministratorPassword` se leen en `dev.bicepparam` mediante
 `readEnvironmentVariable('CENTINELA_SQL_ADMIN_LOGIN'/'CENTINELA_SQL_ADMIN_PASSWORD')` — un archivo
