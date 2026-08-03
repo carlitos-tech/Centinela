@@ -31,9 +31,19 @@
   única petición no destructiva a `Microsoft.Web/validate` respondió `status: Success`, confirmando
   que un App Service Plan Linux **B1, capacidad 1, en East US 2** es una configuración **válida**
   para esta suscripción, sin crear ningún recurso y sin que el Resource Group exista. Esto descarta
-  SKU/región/cuota/tipo de worker/restricción de suscripción como causa, pero **no explica el fallo
-  de `az deployment sub validate`** de la sección 15, que sigue clasificado como `UNKNOWN`. No se
+  SKU/región/tipo de worker/restricción de suscripción como causa, pero **no explica el fallo
+  de `az deployment sub validate`** de la sección 15, que seguía clasificado como `UNKNOWN`. No se
   ejecutó `validate`, ni `what-if`, ni despliegue alguno tras este resultado.
+  **Corrección posterior (sección 18):** este bullet afirmaba originalmente que el PASS también
+  descartaba la **cuota**. Es incorrecto y se retira esa palabra: `Microsoft.Web/validate` valida
+  disponibilidad de SKU/región/worker, **no** el cupo de cómputo de la suscripción. La causa real
+  resultó ser precisamente de cuota — ver sección 18.
+- **Actualización (validación integral — CAUSA RAÍZ IDENTIFICADA):** 2026-08-03 — ver sección 18:
+  con autorización humana explícita para **una única** ejecución de `az deployment sub validate`
+  sobre el HEAD `0a05b5b`, con `--validation-level Provider`, la validación **falló** y por primera
+  vez devolvió un código interno funcional concreto: **`SubscriptionIsOverQuotaForSku`** sobre
+  `Microsoft.Web/serverFarms`. La clasificación `UNKNOWN` de la sección 15 queda **resuelta** y
+  reemplazada por **`QUOTA_OR_CAPACITY`**. No se creó ningún recurso.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -783,6 +793,13 @@ adicionales, ámbito de suscripción, creación del Resource Group incluida) y, 
 plantilla que **ya cambió** desde entonces por la corrección short-circuit de la sección 16.2. Por
 tanto este PASS **no** demuestra que el despliegue completo vaya a validar.
 
+> **Nota retrospectiva (agregada en la sección 18).** Esta sección concluyó que el PASS descartaba,
+> entre otras causas, la **cuota**. Esa conclusión era incorrecta y queda rectificada: el endpoint
+> `Microsoft.Web/validate` comprueba que la combinación SKU/región/tipo de worker sea *ofrecible*,
+> pero **no** consulta el cupo de cómputo asignado a la suscripción. La sección 18 demuestra que la
+> causa real del fallo era exactamente esa: cupo de App Service en cero. El resto de esta sección
+> sigue siendo válido — B1/Linux/East US 2 sí es una configuración soportada aquí.
+
 Conforme a la instrucción explícita del resultado A de la autorización, y pese a que la respuesta
 fue satisfactoria: **no se ejecutó `az deployment sub validate`, no se ejecutó `what-if` y no se
 desplegó nada.** El siguiente paso requiere **autorización humana explícita**: una única nueva
@@ -817,11 +834,184 @@ primera vez que la plantilla corregida se validaría de extremo a extremo.
 
 El workflow de gobierno quedó **verde** en los tres commits.
 
+## 18. Validación integral de la plantilla corregida — **FAIL con causa raíz identificada: cuota de App Service en cero** (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-validacion-integral-final]`. Acotada a **una única**
+ejecución de `az deployment sub validate` sobre el HEAD exacto `0a05b5b` de
+`feat/phase-04-bootstrap-azure-dev`, con prohibición expresa de `what-if`, `deployment sub create`,
+`deploy-dev.ps1 -Apply`, `group create`, creación/modificación/eliminación de recursos, reintentos
+del `validate`, `--debug`/`--verbose`, cambios en Bicep/scripts/pruebas, registro de proveedores,
+cambios de RBAC, creación de secretos, fusión del PR #8, cierre del Issue #7 e inicio de la Fase 05.
+
+### 18.1 Precondiciones verificadas antes de ejecutar
+
+| # | Precondición | Resultado |
+|---|---|---|
+| 1 | HEAD local y remoto exactamente `0a05b5b` | **OK** — local = remoto = `0a05b5ba56b53f65e7a105843363037252d97491` |
+| 2 | Árbol de trabajo limpio | **OK** — `git status --porcelain` sin líneas |
+| 3 | Workflow de gobernanza de `0a05b5b` en verde | **OK** — run `30812753248`, `completed` / `success` |
+| 4 | PR #8 sigue OPEN/DRAFT | **OK** — `state=OPEN`, `draft=true`, `merged=null` |
+| 5 | Issue #7 sigue OPEN | **OK** |
+| 6 | Azure CLI autenticado (operación real de solo lectura) | **OK** — código de salida 0, estado `Enabled` |
+| 7 | Suscripción activa coincide con `CENTINELA_EXPECTED_SUBSCRIPTION_ID` | **OK** — variable definida y coincidente, **valor nunca impreso** |
+| 8 | `rg-novacasa-centinela-dev` sigue sin existir | **OK** — `az group exists` → `false` |
+| 9 | Variables requeridas por los parámetros Bicep | **Ver nota abajo** |
+| 10 | `az bicep build` y `az bicep lint` | **OK** — códigos de salida 0 y 0, sin advertencias |
+
+**Nota sobre la precondición 9.** `infra/dev.bicepparam` lee `CENTINELA_SQL_ADMIN_LOGIN` y
+`CENTINELA_SQL_ADMIN_PASSWORD` mediante `readEnvironmentVariable()`; sin ellas la evaluación de
+parámetros falla con **BCP427** antes de que Azure CLI contacte a Azure. Por diseño de seguridad del
+repositorio estas variables **nunca preexisten** en el entorno: el script versionado
+`infra/scripts/validate.ps1` las solicita por `Read-Host` en tiempo de ejecución, las fija en el
+proceso invocador y las elimina en su bloque `finally` (líneas 25–55). Se aplicó exactamente ese
+mismo mecanismo — credenciales **ficticias y efímeras**, fijadas solo en el proceso invocador,
+eliminadas en `finally` y verificadas como eliminadas al terminar
+(`VARS_LIMPIADAS: login=False password=False`), nunca impresas, nunca escritas a disco y nunca
+usadas para crear un recurso real, dado que `validate` no crea nada. Esto **no** constituye
+"crear secretos" en el sentido prohibido por la autorización (crear un secreto en Key Vault o una
+credencial persistente en Azure): ningún secreto fue creado, almacenado ni versionado.
+
+### 18.2 Comando ejecutado (una sola vez, sin identificadores)
+
+```text
+az deployment sub validate --location eastus2 \
+   --template-file infra/main.bicep \
+   --parameters infra/dev.bicepparam \
+   --parameters primaryLocation=eastus2 \
+   --only-show-errors --output json --validation-level Provider
+```
+
+Los argumentos se construyeron con la función versionada
+`Get-CentinelaDeploymentArguments -Operation validate` (que valida la región contra la lista
+permitida). Esa función **no emite** `--validation-level`, por lo que la bandera exigida por la
+autorización se **añadió** al arreglo devuelto, sin omitir ninguna guarda y **sin modificar ningún
+archivo versionado**. La ejecución usó el invocador versionado
+`Invoke-AzCommandCaptureDiagnostic` (que rechaza por diseño `--debug`, `--verbose` y `-v`, y captura
+`stdout`/`stderr` en memoria sin imprimirlos crudos) y el saneamiento usó
+`Get-CentinelaSanitizedErrorReport` / `ConvertTo-CentinelaSanitizedText` de
+`infra/scripts/lib/DeploySanitizedError.ps1`.
+
+### 18.3 Resultado saneado
+
+**Código de salida: 1 — VALIDACIÓN INTEGRAL: FAIL.** No se reintentó.
+
+Cadena de códigos, del más externo al más profundo:
+
+| Nivel | Código |
+|---|---|
+| 1 (externo) | `InvalidTemplateDeployment` |
+| 2 | `ValidationForResourceFailed` |
+| 3 (**más profundo**) | **`SubscriptionIsOverQuotaForSku`** |
+
+Proveedor que reportó el error de preflight: **`Microsoft.Web/serverFarms (2024-11-01)`**.
+
+Mensaje funcional saneado (tracking ID redactado como `<GUID>` por la función de saneamiento):
+
+```text
+ERROR: {"code": "InvalidTemplateDeployment", "message": "The template deployment 'main' is not
+valid according to the validation procedure. The following resource provider(s) -
+'Microsoft.Web/serverFarms (2024-11-01)' reported preflight validation errors. Tracking id is
+'<GUID>'. See inner errors for details."}
+Inner Errors:
+{"code": "ValidationForResourceFailed", "message": "Validation failed for a resource. Check
+'Error.Details[0]' for more information."}
+Inner Errors:
+{"code": "SubscriptionIsOverQuotaForSku", "message": "Operation cannot be completed without
+additional quota. [...] Limit (Total VMs): 0 [...] Usage: 0 [...] required for this deployment
+(Total VMs): 1. (Minimum) New Limit that you should request to enable this deployment: 1. [...]"}
+```
+
+Cifras funcionales extraídas del mensaje saneado:
+
+| Dato | Valor |
+|---|---|
+| Cupo actual (Total VMs) | **0** |
+| Uso actual | 0 |
+| Requerido por este despliegue (Total VMs) | **1** |
+| Nuevo límite mínimo a solicitar | **1** |
+
+**Clasificación funcional: `QUOTA_OR_CAPACITY`.** Existe evidencia funcional concreta —un código de
+error específico y accionable, con cifras—, por lo que **no** aplica la regla de conservar `UNKNOWN`
+usada en la sección 15.
+
+**Artefacto conocido del saneamiento (no es un fallo de seguridad).** `Get-CentinelaSanitizedErrorReport`
+devolvió `ParsedOk=False` y `Classification=UNKNOWN` porque Azure CLI emite el error como texto
+formateado (`ERROR: {...}` seguido de bloques `Inner Errors:`), no como un único documento JSON, y el
+parser estructurado espera lo segundo. La clasificación de esta sección se hizo, por tanto, leyendo
+el código interno más profundo del **mensaje ya saneado**. Adicionalmente, la regla de redacción de
+rutas locales de Windows sustituyó algunas secuencias de escape literales `\n` del mensaje por el
+marcador de usuario local (visible arriba como `[...]`): es una **sobre-redacción**, que falla del
+lado seguro y no expone nada. Ninguno de los dos puntos se corrigió aquí porque la autorización
+prohíbe expresamente modificar scripts o pruebas; quedan anotados para una tarea futura.
+
+### 18.4 Interpretación: por qué esto reconcilia toda la evidencia previa
+
+Este resultado explica de forma coherente todo lo observado antes:
+
+1. **Por qué falló `az deployment sub validate` (sección 15).** No era un problema de plantilla,
+   región, SKU ni API: la suscripción tiene **cupo de App Service en cero** en East US 2, y el
+   despliegue necesita 1. El mensaje genérico de aquella ocasión era un redireccionamiento sin
+   causa; con `--validation-level Provider` el proveedor sí devolvió el código concreto.
+2. **Por qué `Microsoft.Web/validate` dio PASS (sección 17).** Ese endpoint responde si la
+   combinación SKU/región/tipo de worker es *ofrecible*, **no** si la suscripción tiene cupo. Ambos
+   resultados son correctos y no se contradicen: **B1/Linux/East US 2 es una configuración válida,
+   pero esta suscripción no tiene cupo para instanciarla.**
+3. **Por qué `what-if` excluía `Microsoft.Web/serverfarms` y `Microsoft.Web/sites` (sección 14).**
+   Ese bloqueo tenía causa propia —el parámetro del módulo anidado derivado de la salida de un
+   módulo no desplegado— y ya fue corregido y versionado en la sección 16.2. Es un problema
+   **distinto** de este, no el mismo síntoma.
+
+**Clase de suscripción (consulta de solo lectura, sin imprimir su identificador):** `quotaId =
+PayAsYouGo_2014-09-01`, `spendingLimit = Off`, `state = Enabled`. Es decir, una suscripción de pago
+por uso estándar sin límite de gasto: el cupo de App Service **es ampliable** mediante una solicitud
+de aumento de cuota (típicamente sin costo), a diferencia de lo que ocurriría en una suscripción de
+clase restringida.
+
+### 18.5 Confirmaciones de esta tarea
+
+| Confirmación | Estado |
+|---|---|
+| HEAD validado | `0a05b5b` (local = remoto, árbol limpio) |
+| Ejecuciones de `az deployment sub validate` | **Exactamente una**, sin reintentos |
+| Resultado | **FAIL** — `SubscriptionIsOverQuotaForSku` |
+| Clasificación funcional | **`QUOTA_OR_CAPACITY`** |
+| `az group exists --name rg-novacasa-centinela-dev` (después) | `false` |
+| Recursos de Azure aplicados | **Cero** (`az resource list` → 0; `az group list` → 0; `az deployment sub list` → 0) |
+| `az deployment sub what-if` en esta tarea | **No ejecutado** |
+| `az deployment sub create` / `az group create` / `deploy-dev.ps1 -Apply` | No ejecutados |
+| `--debug` / `--verbose` | No usados (rechazados por diseño en el invocador versionado) |
+| Archivos de Bicep, scripts o pruebas modificados | **Ninguno** |
+| Proveedores registrados en esta tarea | Ninguno |
+| Cambios de RBAC | Ninguno |
+| Secretos creados en Azure | Ninguno (credenciales SQL ficticias, efímeras y eliminadas en `finally`) |
+| Subscription ID / Tenant ID / contraseñas / tokens / correos / rutas locales impresos o guardados | Ninguno |
+| PR #8 | **OPEN, DRAFT, sin fusionar** |
+| Issue #7 | **Abierto** |
+| Fase 05 | No iniciada |
+
+### 18.6 Decisión humana requerida
+
+El bloqueo ya **no** es un desconocido: es un cupo de App Service en cero en East US 2. Las vías
+posibles requieren autorización humana explícita y **ninguna se ejecutó**:
+
+1. **Solicitar aumento de cuota de App Service** a 1 instancia (o más) en East US 2 para esta
+   suscripción — es la vía que preserva el diseño actual sin cambios de plantilla ni de región.
+2. **Reintentar en la región alternativa Central US** (permitida por `CLAUDE.md`), si allí hubiera
+   cupo. Requiere una nueva ejecución autorizada de `validate` con `primaryLocation=centralus`.
+3. **Revisar el SKU del App Service Plan**, teniendo en cuenta que el cupo reportado es de
+   instancias (`Total VMs`), por lo que un cambio de nivel podría no resolverlo por sí solo.
+
+Hasta que se resuelva el cupo, `az deployment sub validate` seguirá fallando y el despliegue real
+**no puede** completarse. Conforme a la autorización, **no se ejecutó `what-if`** y no se avanzó a
+ningún despliegue.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
   rg-novacasa-centinela-dev` → `false`, re-confirmado al cierre de la sesión de registro de
-  proveedores — sección 13 — y de nuevo al cierre de la corrección de `what-if` — sección 14).
+  proveedores — sección 13 —, de nuevo al cierre de la corrección de `what-if` — sección 14 — y una
+  vez más tras la validación integral de la sección 18, donde además se comprobó que la suscripción
+  tiene **cero** recursos, **cero** grupos de recursos y **cero** deployments registrados).
 - No se ejecutó `az group create`, `az deployment sub create` ni `az deployment group create`.
 - **Actualizado (sección 12):** los seis proveedores autorizados (`Microsoft.Storage`,
   `Microsoft.KeyVault`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Web`,
@@ -866,19 +1056,37 @@ El workflow de gobierno quedó **verde** en los tres commits.
 6. ~~**Nuevo (sección 15):** decidir cuál de las 4 opciones de la sección 15 seguir~~ — **decidido
    en la sección 16**: la opción 4 (desplegar directamente aceptando la incógnita) fue **rechazada**
    y se autorizó una vía distinta, la validación específica no destructiva vía `Microsoft.Web/validate`.
-   La clasificación `UNKNOWN` de la sección 15 **se mantiene**: la causa funcional real del fallo de
-   `az deployment sub validate` sigue sin determinarse.
+   La clasificación `UNKNOWN` de la sección 15 se mantuvo hasta la sección 18, donde quedó
+   **resuelta** como `QUOTA_OR_CAPACITY`.
 7. ~~**Commit pendiente de una tarea previa:** los cinco archivos de la corrección short-circuit~~ —
    **completado en la sección 16.2**: versionados en dos commits separados
    (`fix(infra): remove App Insights bootstrap dependency` y
    `fix(infra): block incomplete nested what-if expansion`), con la regresión completa en verde y el
    workflow de gobierno en verde.
-8. **Nuevo — decisión humana pendiente (secciones 16 y 17):** la validación específica
-   `Microsoft.Web/validate` dio **PASS** (App Service Plan Linux B1, capacidad 1, East US 2 es una
-   configuración válida para esta suscripción). Ese PASS **no** explica el fallo de
-   `az deployment sub validate` de la sección 15, que sigue clasificado como `UNKNOWN`, ni demuestra
-   que el despliegue completo vaya a validar. **Se requiere autorización humana explícita para una
-   única nueva ejecución de `az deployment sub validate` sobre el código ya versionado (`f1c5ddb`)**
-   — sería la primera validación de extremo a extremo de la plantilla corregida. Conforme a la
-   instrucción explícita de la autorización, no se ejecutó por iniciativa del agente pese al
-   resultado satisfactorio, y tampoco se ejecutó `what-if` ni ningún despliegue.
+8. ~~**Decisión humana pendiente (secciones 16 y 17):** autorizar una única nueva ejecución de
+   `az deployment sub validate` sobre el código ya versionado~~ — **completado en la sección 18**:
+   se autorizó y ejecutó **exactamente una vez** sobre el HEAD `0a05b5b` con
+   `--validation-level Provider`. Resultado **FAIL**, pero con la causa raíz por fin identificada:
+   `SubscriptionIsOverQuotaForSku` sobre `Microsoft.Web/serverFarms`. La clasificación `UNKNOWN` de
+   la sección 15 queda **resuelta** y sustituida por `QUOTA_OR_CAPACITY`. Cero recursos aplicados.
+   Texto original conservado abajo para trazabilidad:
+
+   > la validación específica `Microsoft.Web/validate` dio **PASS** (App Service Plan Linux B1,
+   > capacidad 1, East US 2 es una configuración válida para esta suscripción). Ese PASS **no**
+   > explica el fallo de `az deployment sub validate` de la sección 15, que sigue clasificado como
+   > `UNKNOWN`, ni demuestra que el despliegue completo vaya a validar. **Se requiere autorización
+   > humana explícita para una única nueva ejecución de `az deployment sub validate` sobre el código
+   > ya versionado (`f1c5ddb`)** — sería la primera validación de extremo a extremo de la plantilla
+   > corregida. Conforme a la instrucción explícita de la autorización, no se ejecutó por iniciativa
+   > del agente pese al resultado satisfactorio, y tampoco se ejecutó `what-if` ni ningún despliegue.
+
+9. **Nuevo — bloqueo vigente y decisión humana requerida (sección 18):** la suscripción tiene
+   **cupo de App Service en cero** (`Limit (Total VMs): 0`) en East US 2, y el despliegue requiere 1.
+   Mientras no se resuelva, `az deployment sub validate` seguirá fallando y el despliegue real no
+   puede completarse. Vías posibles, **ninguna ejecutada**: (a) solicitar aumento de cuota de App
+   Service a 1 instancia en East US 2 —la suscripción es `PayAsYouGo` con límite de gasto
+   desactivado, por lo que el aumento es solicitable—; (b) probar la región alternativa Central US
+   mediante una nueva ejecución autorizada de `validate` con `primaryLocation=centralus`; (c)
+   revisar el SKU, teniendo en cuenta que el cupo agotado es de instancias (`Total VMs`) y que un
+   cambio de nivel podría no resolverlo por sí solo. Se requiere **autorización humana explícita**
+   para cualquiera de ellas y, por separado, para un futuro `what-if`.
