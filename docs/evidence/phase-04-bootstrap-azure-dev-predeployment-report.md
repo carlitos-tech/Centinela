@@ -381,11 +381,102 @@ ninguna regla de firewall de Azure SQL, ninguna asignación RBAC, ningún secret
 ni `develop`. PR #8 permanece DRAFT y sin fusionar; Issue #7 permanece abierto; la Fase 05 no ha
 iniciado.
 
+## 14. Corrección what-if: cambio a `FullResourcePayloads` — el `InternalServerError` se resolvió, pero surgió un bloqueo distinto (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-correccion-what-if]`. Corrección acotada a
+`infra/scripts/lib/DeployArguments.ps1` (y, solo si hubiera sido necesario, a
+`DeployWhatIfAnalysis.ps1`) más las pruebas correspondientes — sin tocar plantillas Bicep, sin
+`az deployment sub create`, sin `az group create`, sin registrar proveedores adicionales.
+
+**Cambio de código exacto** (rama `what-if` de `Get-CentinelaDeploymentArguments`):
+
+| Antes (Corrección 4/5, bloqueado por `InternalServerError`) | Después (esta corrección) |
+|---|---|
+| `--result-format ResourceIdOnly --no-pretty-print` | `--result-format FullResourcePayloads --no-pretty-print` |
+
+`--no-pretty-print` y `--output json` se conservaron sin cambios.
+
+**`Get-CentinelaWhatIfAnalysis` no requirió ninguna adaptación**: la función solo lee
+`resourceId`/`changeType` de cada elemento de `changes[]`, campos presentes tanto en
+`ResourceIdOnly` como en `FullResourcePayloads` (este último agrega además `before`/`after`/`delta`,
+que la función ignora). Se verificó esto con nuevas pruebas antes de ejecutar cualquier comando
+`az` real.
+
+**Pruebas agregadas** (ninguna usa un identificador real; los Subscription ID de prueba se generan
+en tiempo de ejecución con `[guid]::NewGuid()`):
+
+| Archivo | Casos nuevos |
+|---|---|
+| `Test-DeployArguments.ps1` | `--result-format FullResourcePayloads` presente en `what-if`; `ResourceIdOnly` completamente ausente |
+| `Test-WhatIfPlanApproval.ps1` | 9 Create con propiedades completas (`FullResourcePayloads`) → aprobado; 1 Delete con propiedades completas → bloqueado; 1 Modify con propiedades completas → bloqueado; salida no-JSON con un Subscription ID ficticio embebido → bloqueado con motivo genérico, y ese ID ficticio nunca aparece en `BlockReasons`/`Counts`/`ResourceSummaries` |
+
+**Resultado de las pruebas de esta corrección** (suite completa, no solo los casos nuevos):
+
+| Suite | Resultado |
+|---|---|
+| `dotnet build -c Release` | Éxito — 0 advertencias, 0 errores |
+| `dotnet test -c Release` | **149/149 OK** (133 unit + 16 integración) — sin cambios, ningún código .NET fue tocado |
+| `az bicep build --file infra/main.bicep` | Éxito |
+| `az bicep lint --file infra/main.bicep` | Sin hallazgos |
+| `az deployment sub validate` (East US 2) | `provisioningState=Succeeded` |
+| `infra/scripts/tests/Test-DeployArguments.ps1` | **6/6 OK** (4 previas + 2 nuevas) |
+| `infra/scripts/tests/Test-WhatIfPlanApproval.ps1` | **15/15 OK** (11 previas + 4 nuevas) |
+| `infra/scripts/tests/Test-DeployDevGuard.ps1` | 8/8 OK (sin cambios) |
+| `infra/scripts/tests/Test-AzExecFailureHandling.ps1` | 1/1 OK (sin cambios) |
+
+**El único intento autorizado de `az deployment sub what-if`** (sin reintento; per la autorización,
+un solo intento y, si bloquea, detenerse para decisión humana) con `FullResourcePayloads`:
+
+- Código de salida: `0`. Salida: JSON válido. **El `InternalServerError` documentado en la sección
+  13 (4/4 intentos previos con `ResourceIdOnly`) no se repitió** — el cambio de formato sí resolvió
+  ese problema puntual.
+- `Get-CentinelaWhatIfAnalysis` analizó el plan resultante y lo **BLOQUEÓ**: el arreglo `changes[]`
+  devuelto por Azure solo contenía **7 operaciones Create**, no las 9 aprobadas. Faltan por completo
+  del arreglo (no aparecen con otro `changeType`; el resumen de conteos solo muestra la clave
+  `Create`): `Microsoft.Web/serverfarms` y `Microsoft.Web/sites`.
+
+  Resumen sanitizado (sin `resourceId` completos, solo tipo:nombre público):
+
+  ```text
+  what-if (resumen sanitizado, sin resourceId completos):
+    Create: 7
+    Recursos Create (tipo: nombre publico):
+      - Microsoft.Resources/resourceGroups: rg-novacasa-centinela-dev
+      - Microsoft.Insights/components: appi-novacasa-centinela-dev
+      - Microsoft.KeyVault/vaults: kv-novacas-***
+      - Microsoft.OperationalInsights/workspaces: log-novacasa-centinela-dev
+      - Microsoft.Sql/servers: sql-novacasa-centinela-dev-***
+      - Microsoft.Sql/servers/databases: sqldb-novacasa-centinela-dev
+      - Microsoft.Storage/storageAccounts: stnovacasac***
+    Resultado: BLOQUEADO. Motivos:
+      - Se esperaban exactamente 9 operaciones Create; se encontraron 7.
+      - Faltan recursos aprobados en el plan: Microsoft.Web/serverfarms, Microsoft.Web/sites.
+  ```
+
+- **Investigación de solo lectura** (sin modificar ninguna plantilla, sin reintentar el what-if, sin
+  relajar la guarda): se confirmó que `infra/main.bicep` invoca `modules/app-service.bicep` sin
+  ninguna condición (`if (...)`), y que dentro de `app-service.bicep` los recursos
+  `Microsoft.Web/serverfarms` (`appServicePlan`) y `Microsoft.Web/sites` (`webApp`) tampoco tienen
+  ninguna condición — ambos se declaran incondicionalmente. `az deployment sub validate` confirmó
+  `provisioningState=Succeeded` para la plantilla completa, incluidos esos dos recursos. La
+  plantilla, por tanto, sí los incluye en el plan real de Bicep; su ausencia está en la respuesta
+  del motor de `what-if` de Azure, no en el código de Centinela ni en `Get-CentinelaWhatIfAnalysis`
+  (que se comportó correctamente: bloqueó una desviación real del plan aprobado, tal como está
+  diseñado para hacer).
+- **No se investigó más allá de esta lectura, no se reintentó el `what-if` (el intento autorizado
+  era único), no se modificó ninguna plantilla Bicep ni se relajó la guarda para forzar una
+  aprobación.** Esto queda como bloqueador abierto que requiere decisión humana explícita antes de
+  continuar: podría tratarse de una limitación conocida del motor de `what-if` de Azure con ciertos
+  tipos de recurso (a investigar/documentar en una sesión posterior, con su propia autorización), o
+  requerir un enfoque distinto de verificación pre-despliegue.
+- `az group exists --name rg-novacasa-centinela-dev` → `false`, confirmado tanto antes como después
+  de este intento. Cero recursos de Azure creados, modificados o eliminados en esta corrección.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
   rg-novacasa-centinela-dev` → `false`, re-confirmado al cierre de la sesión de registro de
-  proveedores — sección 13).
+  proveedores — sección 13 — y de nuevo al cierre de la corrección de `what-if` — sección 14).
 - No se ejecutó `az group create`, `az deployment sub create` ni `az deployment group create`.
 - **Actualizado (sección 12):** los seis proveedores autorizados (`Microsoft.Storage`,
   `Microsoft.KeyVault`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Web`,
@@ -412,13 +503,18 @@ iniciado.
 
 1. ~~Registro de los 6 proveedores de Azure~~ — **completado en sección 12**, con autorización
    humana explícita previa.
-2. **Resolver el bloqueo de `what-if`** (sección 13): reintentar en una sesión posterior y/o decidir
-   si se ajusta `--result-format` en `Get-CentinelaDeploymentArguments` (cambio de código versionado,
-   requiere su propia autorización y pruebas). Sin un `what-if` posterior al registro de proveedores
-   que pase por `Get-CentinelaWhatIfAnalysis`, no se debe avanzar a `deploy-dev.ps1 -Apply`.
-3. **Configuración temporal de acceso a Azure SQL**, si resultara necesaria para el despliegue real
+2. ~~Resolver el `InternalServerError` de `what-if`~~ — **resuelto en sección 14**: el cambio a
+   `--result-format FullResourcePayloads` eliminó el `InternalServerError` (4/4 con
+   `ResourceIdOnly` → 0/1 con `FullResourcePayloads`).
+3. **Nuevo bloqueo a resolver (sección 14):** el `what-if` con `FullResourcePayloads` reporta solo 7
+   de las 9 operaciones Create aprobadas — faltan `Microsoft.Web/serverfarms` y
+   `Microsoft.Web/sites` del arreglo `changes[]`, pese a que ambos están declarados sin condición en
+   la plantilla y `validate` los aprueba. Se requiere decisión humana explícita sobre cómo proceder
+   (investigar la limitación de Azure, ajustar el método de verificación pre-despliegue, u otra vía)
+   antes de intentar un nuevo `what-if` o avanzar a `deploy-dev.ps1 -Apply`.
+4. **Configuración temporal de acceso a Azure SQL**, si resultara necesaria para el despliegue real
    o para verificación posterior (la regla `AllowAzureServices` permanece deshabilitada por
    defecto; cualquier regla de firewall que se decida crear debe tener alcance mínimo justificado).
-4. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
+5. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
    AUTORIZO_DESPLIEGUE_CENTINELA_DEV ...`), incluyendo revisión y aprobación humana del Pull Request
    de esta preparación antes de fusionar hacia `develop`.
