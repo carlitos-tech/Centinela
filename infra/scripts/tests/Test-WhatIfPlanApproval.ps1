@@ -27,6 +27,21 @@ rg-novacasa-centinela-dev:
      bloquea.
   9. JSON invalido -> bloquea.
 
+Escenarios adicionales (Correccion what-if, Fase 04 — cambio de --result-format a
+FullResourcePayloads tras el InternalServerError reproducible documentado con ResourceIdOnly):
+  10. FullResourcePayloads: 9 Create con propiedades completas (before/after/delta ademas de
+      resourceId/changeType) -> Approved = $true. Confirma que Get-CentinelaWhatIfAnalysis no
+      requirio adaptacion: solo lee resourceId/changeType, presentes en ambos formatos.
+  11. FullResourcePayloads: 1 Delete con propiedades completas -> bloquea igual que con
+      ResourceIdOnly.
+  12. FullResourcePayloads: 1 Modify con propiedades completas -> bloquea igual que con
+      ResourceIdOnly.
+  13. Salida de `az` que no es JSON (texto de error plano, no una lista de cambios) -> bloquea con
+      un motivo generico ("La salida de what-if no es JSON valido."), y ese texto de error
+      (que en este escenario simulado contiene un Subscription ID ficticio, generado con
+      [guid]::NewGuid(), nunca un identificador real) jamas aparece en BlockReasons, Counts ni
+      ResourceSummaries: Get-CentinelaWhatIfAnalysis nunca hace eco de la entrada cruda.
+
 Escenarios de orquestacion (Invoke-CentinelaDevPreDeploymentAndCreate), que ademas confirman que
 $RunDeploymentCreate nunca se invoca cuando el paso anterior falla:
   10. Fallo de Azure CLI en el propio what-if (el scriptblock $RunWhatIf lanza una excepcion) ->
@@ -128,6 +143,70 @@ Test-Analysis -Name 'Recurso de Microsoft Foundry / Azure AI Search' -Json (New-
 
 # 9. JSON invalido.
 Test-Analysis -Name 'JSON invalido' -Json '{ esto no es json valido' -ExpectedApproved $false
+
+# ---------------------------------------------------------------------------------------------
+# Escenarios FullResourcePayloads (Correccion what-if, Fase 04).
+# ---------------------------------------------------------------------------------------------
+
+function New-CentinelaFullPayloadChange {
+    param(
+        [string]$ResourceId,
+        [string]$ChangeType
+    )
+    @{
+        resourceId = $ResourceId
+        changeType = $ChangeType
+        # Campos adicionales que FullResourcePayloads agrega y ResourceIdOnly no incluye.
+        # Get-CentinelaWhatIfAnalysis no los lee; se agregan aqui para demostrar que su presencia
+        # no rompe ni altera el analisis.
+        before     = $null
+        after      = @{ id = $ResourceId; name = 'placeholder'; type = 'placeholder' }
+        delta      = @()
+    }
+}
+
+function Get-CentinelaApprovedChangesFullPayload {
+    (Get-CentinelaApprovedChanges) | ForEach-Object {
+        New-CentinelaFullPayloadChange -ResourceId $_.resourceId -ChangeType $_.changeType
+    }
+}
+
+# 10. FullResourcePayloads: 9 Create con propiedades completas.
+Test-Analysis -Name 'FullResourcePayloads: 9 Create con propiedades completas' `
+    -Json (New-CentinelaWhatIfJson -Changes (Get-CentinelaApprovedChangesFullPayload)) -ExpectedApproved $true
+
+# 11. FullResourcePayloads: 1 Delete con propiedades completas.
+$fullDeleteChanges = @(Get-CentinelaApprovedChangesFullPayload)
+$fullDeleteChanges[3].changeType = 'Delete'
+Test-Analysis -Name 'FullResourcePayloads: 1 Delete con propiedades completas' `
+    -Json (New-CentinelaWhatIfJson -Changes $fullDeleteChanges) -ExpectedApproved $false
+
+# 12. FullResourcePayloads: 1 Modify con propiedades completas.
+$fullModifyChanges = @(Get-CentinelaApprovedChangesFullPayload)
+$fullModifyChanges[3].changeType = 'Modify'
+Test-Analysis -Name 'FullResourcePayloads: 1 Modify con propiedades completas' `
+    -Json (New-CentinelaWhatIfJson -Changes $fullModifyChanges) -ExpectedApproved $false
+
+# 13. Salida de `az` que no es JSON de una lista de cambios (texto de error plano), con un
+# Subscription ID FICTICIO ([guid]::NewGuid(), nunca un identificador real) embebido, para
+# confirmar que Get-CentinelaWhatIfAnalysis nunca hace eco de la entrada cruda en sus salidas.
+$redactionFakeSubscriptionId = [guid]::NewGuid().ToString()
+$rawErrorText = "ERROR: (AuthorizationFailed) The client does not have authorization to perform action 'Microsoft.Resources/deployments/write' over scope '/subscriptions/$redactionFakeSubscriptionId/resourceGroups/$resourceGroupName'."
+$redactionAnalysis = Get-CentinelaWhatIfAnalysis -WhatIfJson $rawErrorText -ExpectedResourceGroupName $resourceGroupName
+$redactionApprovedPass = ($redactionAnalysis.Approved -eq $false)
+$redactionBlockReasonsText = ($redactionAnalysis.BlockReasons -join ' | ')
+$redactionCountsText = ($redactionAnalysis.Counts.Keys -join ',')
+$redactionSummariesText = ($redactionAnalysis.ResourceSummaries -join ' | ')
+$redactionNeverLeaksPass = (-not $redactionBlockReasonsText.Contains($redactionFakeSubscriptionId)) -and `
+    (-not $redactionCountsText.Contains($redactionFakeSubscriptionId)) -and `
+    (-not $redactionSummariesText.Contains($redactionFakeSubscriptionId)) -and `
+    (-not $redactionBlockReasonsText.Contains($rawErrorText))
+$analysisResults += [pscustomobject]@{
+    Name     = '13. Salida no-JSON con Subscription ID ficticio: bloquea y nunca hace eco del texto crudo'
+    Pass     = ($redactionApprovedPass -and $redactionNeverLeaksPass)
+    Approved = $redactionAnalysis.Approved
+    Reasons  = $redactionBlockReasonsText
+}
 
 # ---------------------------------------------------------------------------------------------
 # Escenarios de orquestacion (Invoke-CentinelaDevPreDeploymentAndCreate).

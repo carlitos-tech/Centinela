@@ -17,6 +17,12 @@ Escenarios verificados:
   4. -Operation 'what-if' siempre incluye '--no-pretty-print' (sin este flag, `az deployment ...
      what-if` ignora --output/-o y devuelve un diff de texto en vez de JSON; confirmado de forma
      empirica contra Azure real durante la VALIDACION de esta correccion).
+  5. -Operation 'what-if' incluye '--result-format','FullResourcePayloads' (Correccion what-if,
+     Fase 04: ResourceIdOnly combinado con los tipos de recurso de esta plantilla causaba un
+     InternalServerError reproducible del backend de Azure; ver seccion 13 del reporte de
+     evidencia).
+  6. -Operation 'what-if' nunca incluye el valor 'ResourceIdOnly' (el formato anterior debe quedar
+     completamente eliminado, no solo reemplazado en el caso feliz).
 
 .OUTPUTS
 Codigo de salida 0 si los tres escenarios se comportaron como se esperaba.
@@ -77,6 +83,14 @@ $whatIfArgs = Get-CentinelaDeploymentArguments -Operation 'what-if' -Location 'e
     -TemplateFile $templateFile -ParametersFile $paramsFile
 $noPrettyPrintPass = $whatIfArgs -contains '--no-pretty-print'
 $results += [pscustomobject]@{ Name = "what-if incluye --no-pretty-print"; Pass = $noPrettyPrintPass }
+
+# 5. what-if incluye --result-format FullResourcePayloads.
+$fullPayloadsPass = Test-ArgumentContainsPair -Arguments $whatIfArgs -Flag '--result-format' -Value 'FullResourcePayloads'
+$results += [pscustomobject]@{ Name = 'what-if incluye --result-format FullResourcePayloads'; Pass = $fullPayloadsPass }
+
+# 6. what-if nunca incluye ResourceIdOnly (formato anterior eliminado por completo).
+$noResourceIdOnlyPass = -not ($whatIfArgs -contains 'ResourceIdOnly')
+$results += [pscustomobject]@{ Name = 'what-if nunca incluye ResourceIdOnly'; Pass = $noResourceIdOnlyPass }
 
 $allPassed = $true
 foreach ($result in $results) {

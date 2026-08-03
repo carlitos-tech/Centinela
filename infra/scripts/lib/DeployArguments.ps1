@@ -70,9 +70,13 @@ function Get-CentinelaDeploymentArguments {
     )
 
     if ($Operation -eq 'what-if') {
-        # ResourceIdOnly: el JSON resultante solo trae resourceId + changeType por cambio,
-        # suficiente para el analisis de Correccion 3 y sin incluir propiedades completas de cada
-        # recurso (menor superficie de datos a sanitizar).
+        # FullResourcePayloads (Correccion what-if, Fase 04): ResourceIdOnly combinado con los
+        # tipos de recurso de esta plantilla (SQL/Key Vault) provoca un InternalServerError del
+        # backend de Azure de forma reproducible (4/4 intentos documentados en la seccion 13 del
+        # reporte de evidencia), un bug conocido de Azure CLI/ARM y no un rechazo del plan.
+        # FullResourcePayloads es el formato alternativo recomendado para sortear ese bug.
+        # Get-CentinelaWhatIfAnalysis solo necesita resourceId + changeType por cambio, presentes
+        # en ambos formatos, por lo que el analisis y las guardas no requieren adaptacion.
         #
         # --no-pretty-print es obligatorio: `az deployment ... what-if` tiene un renderizador propio
         # que ignora --output/-o y siempre imprime un diff de texto coloreado a menos que se pase
@@ -80,7 +84,7 @@ function Get-CentinelaDeploymentArguments {
         # empirica: sin el, Invoke-AzCommandCaptureJson recibe texto no-JSON y
         # Get-CentinelaWhatIfAnalysis bloquea con "La salida de what-if no es JSON valido", pese a
         # que `az` termina con codigo de salida 0).
-        $arguments += @('--result-format', 'ResourceIdOnly', '--no-pretty-print')
+        $arguments += @('--result-format', 'FullResourcePayloads', '--no-pretty-print')
     }
 
     # Salida JSON capturable (nunca impresa cruda; ver AzExec.ps1 / Correccion 4).
