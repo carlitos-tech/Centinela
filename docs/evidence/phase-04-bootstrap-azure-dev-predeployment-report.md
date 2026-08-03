@@ -8,6 +8,11 @@
   sección 11 para el detalle completo de las cinco correcciones aplicadas a las guardas y al flujo
   de despliegue antes de solicitar autorización para registrar proveedores y crear la
   infraestructura DEV.
+- **Actualización (registro de proveedores):** 2026-08-03 — ver secciones 12 y 13: con autorización
+  humana explícita y acotada a los seis proveedores documentados, se ejecutó `az provider register`
+  (los seis pasaron de `NotRegistered` a `Registered`) y se revalidó Bicep/`validate`; el `what-if`
+  posterior quedó **bloqueado por un error persistente del lado de Azure**, no por un problema del
+  plan — ver sección 13 para el detalle y las referencias externas.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -273,12 +278,120 @@ Archivos nuevos: `infra/scripts/lib/DeployArguments.ps1`, `infra/scripts/lib/Dep
 (nueva función `Invoke-AzCommandCaptureJson`; el mensaje de error de `Invoke-AzCommand` ya no
 incluye los argumentos completos, para no filtrar rutas locales).
 
+## 12. Registro de proveedores de Azure — autorizado y ejecutado (2026-08-03)
+
+**Autorización humana recibida:** mensaje explícito del usuario en esta sesión, acotado a exactamente
+los seis proveedores de la sección "Pendiente de aprobación humana" (versión anterior de este
+reporte), con procedimiento paso a paso, HEAD esperado confirmado, PR #8 (DRAFT) e Issue #7
+(abierto) verificados antes de escribir, y prohibición expresa de registrar cualquier proveedor
+adicional, crear recursos, RBAC o migrar SQL.
+
+Antes de cualquier escritura se confirmó (solo lectura): rama `feat/phase-04-bootstrap-azure-dev`,
+`git status` limpio, HEAD coincidente con el SHA esperado, PR #8 abierto y en DRAFT, Issue #7
+abierto, `CENTINELA_EXPECTED_SUBSCRIPTION_ID` definida (sin imprimir su valor), suscripción activa
+`SuscripcionClaudeCode`/`Enabled`/ID coincidente con la variable esperada (comparación hecha en
+memoria, nunca impresa).
+
+Estado antes → después, verificado con `az provider show --namespace <ns> --query registrationState`
+antes y después de cada registro:
+
+| Proveedor | Estado anterior | Comando ejecutado | Estado final |
+|---|---|---|---|
+| `Microsoft.Storage` | `NotRegistered` | `az provider register --namespace Microsoft.Storage --wait` | `Registered` |
+| `Microsoft.KeyVault` | `NotRegistered` | `az provider register --namespace Microsoft.KeyVault --wait` | `Registered` |
+| `Microsoft.OperationalInsights` | `NotRegistered` | `az provider register --namespace Microsoft.OperationalInsights --wait` | `Registered` |
+| `Microsoft.Insights` | `NotRegistered` | `az provider register --namespace Microsoft.Insights --wait` | `Registered` |
+| `Microsoft.Web` | `NotRegistered` | `az provider register --namespace Microsoft.Web --wait` | `Registered` |
+| `Microsoft.Sql` | `NotRegistered` | `az provider register --namespace Microsoft.Sql --wait` | `Registered` |
+
+Los seis proveedores se registraron uno a la vez, con `--wait`, verificando `registrationState` tras
+cada uno antes de continuar con el siguiente. Ningún otro proveedor fue registrado. No se ejecutó
+`az group create` ni `az deployment sub create` en ningún momento.
+
+## 13. Re-validación posterior al registro: Bicep, `validate` — OK; `what-if` — bloqueado por error de Azure
+
+Tras confirmar los seis proveedores en `Registered`, se re-ejecutó la cadena de revalidación en East
+US 2 (única región autorizada en esta ejecución; Central US no se usó):
+
+| Comando | Resultado |
+|---|---|
+| `az bicep version` / `build` / `lint` (`main.bicep`) | Éxito — 0 advertencias, 0 errores |
+| `az deployment sub validate --location eastus2 ...` | `provisioningState: "Succeeded"` (exit code 0) |
+| `az deployment sub what-if --location eastus2 ... --result-format ResourceIdOnly --no-pretty-print` | **Bloqueado — 4/4 intentos fallaron con el mismo error de Azure** (ver abajo) |
+
+**Incidente de seguridad menor, registrado y ya remediado en la misma sesión:** en el primer intento
+de `what-if`, un `InternalServerError` transitorio de Azure se propagó como excepción nativa de
+PowerShell 5.1 (`2>$null` sobre un ejecutable nativo con `$ErrorActionPreference = 'Stop'` no
+descarta el stream de error antes de que se convierta en excepción terminante) y el mensaje de
+diagnóstico de Azure — que incluye el `scope` del deployment con el Subscription ID completo — quedó
+visible en la salida de la sesión de desarrollo (nunca en un archivo del repositorio, nunca en este
+reporte). Se notificó de inmediato al usuario, quien decidió tratarlo como incidente menor y
+continuar. Los tres intentos posteriores usaron una captura corregida
+(`$ErrorActionPreference = 'Continue'` acotado solo a la invocación nativa, más redacción explícita
+de cualquier `/subscriptions/<id>` antes de mostrar cualquier texto) y no repitieron la exposición.
+
+**Los 4 intentos** (mismos argumentos exactos, generados por `Get-CentinelaDeploymentArguments`)
+fallaron con el mismo error, solo con timestamp/tracking id distintos:
+
+```text
+ERROR: InternalServerError - Encountered internal server error while processing the deployment
+what-if request. Diagnostic information: timestamp '<distinto por intento>', scope
+'/subscriptions/***REDACTED***', tracking id '<distinto por intento>', request correlation id
+'<distinto por intento>'.
+```
+
+Este `InternalServerError` **no es un rechazo del plan** por parte de `Get-CentinelaWhatIfAnalysis`
+(esa guarda nunca llegó a ejecutarse porque `az` no devolvió JSON): es un fallo del propio servicio
+`what-if` de Azure Resource Manager. Es un problema externo documentado y recurrente, reproducido
+por otros usuarios en escenarios similares (plantillas con Azure SQL / Key Vault, y en particular con
+la opción `--result-format ResourceIdOnly` que este proyecto usa por diseño — ver Corrección 4/5).
+Referencias externas consultadas en esta sesión:
+
+- https://github.com/Azure/azure-cli/issues/28355
+- https://github.com/Azure/azure-cli/issues/22314
+- https://github.com/Azure/azure-cli/issues/31893
+- https://github.com/Azure/arm-template-whatif/issues/408
+- https://learn.microsoft.com/en-us/answers/questions/2339530/(bicep)-what-if-throwing-error-internalservererror
+- https://learn.microsoft.com/en-us/answers/questions/5508666/encountered-internal-server-error-while-processing
+
+**Por lo tanto, el what-if de esta sesión NO produjo un resultado analizable por
+`Get-CentinelaWhatIfAnalysis`** y no se puede confirmar en esta sesión el patrón exacto de 9
+Create/0 Modify/0 Delete contra un `what-if` real posterior al registro de proveedores (sí se había
+confirmado ese patrón en la sesión anterior, antes del registro — sección 10). Esto queda como
+bloqueador abierto para una sesión posterior: reintentar el `what-if` (podría resolverse solo, como
+reportan otros usuarios) o investigar/ajustar `--result-format` en un cambio de código versionado
+aparte, con su propia autorización y sus propias pruebas — ninguna de las dos cosas se hizo en esta
+sesión más allá de los reintentos de solo lectura ya documentados.
+
+**Pruebas ejecutadas en esta sesión** (sin tocar Azure real):
+
+| Suite | Resultado |
+|---|---|
+| `dotnet build -c Release` | Éxito — 0 advertencias, 0 errores |
+| `dotnet test -c Release` | **149/149 OK** (133 unit + 16 integración) |
+| `infra/scripts/tests/Test-DeployArguments.ps1` | 4/4 OK |
+| `infra/scripts/tests/Test-WhatIfPlanApproval.ps1` | 11/11 OK |
+| `infra/scripts/tests/Test-DeployDevGuard.ps1` | 8/8 OK |
+| `infra/scripts/tests/Test-AzExecFailureHandling.ps1` | 1/1 OK |
+
+**Confirmado al cierre de esta sesión:** `az group exists --name rg-novacasa-centinela-dev` →
+`false`. Cero recursos de Azure creados, modificados o eliminados. `az deployment sub create` no se
+ejecutó ni una sola vez. No se registró ningún proveedor adicional a los seis autorizados. No se creó
+ninguna regla de firewall de Azure SQL, ninguna asignación RBAC, ningún secreto. No se tocaron `main`
+ni `develop`. PR #8 permanece DRAFT y sin fusionar; Issue #7 permanece abierto; la Fase 05 no ha
+iniciado.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
-  rg-novacasa-centinela-dev` → `false`).
+  rg-novacasa-centinela-dev` → `false`, re-confirmado al cierre de la sesión de registro de
+  proveedores — sección 13).
 - No se ejecutó `az group create`, `az deployment sub create` ni `az deployment group create`.
-- No se registró ningún proveedor de Azure (`az provider register` nunca se ejecutó).
+- **Actualizado (sección 12):** los seis proveedores autorizados (`Microsoft.Storage`,
+  `Microsoft.KeyVault`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Web`,
+  `Microsoft.Sql`) **sí fueron registrados** con `az provider register --wait`, con autorización
+  humana explícita previa y acotados exactamente a esos seis; ningún proveedor adicional fue
+  registrado.
 - No se creó ni modificó ninguna asignación RBAC.
 - No se creó ningún secreto en Azure Key Vault ni en ningún otro servicio.
 - No se creó ninguna regla de firewall de Azure SQL.
@@ -297,12 +410,15 @@ incluye los argumentos completos, para no filtrar rutas locales).
 
 ## Pendiente de aprobación humana explícita (antes de continuar)
 
-1. **Registro de los 6 proveedores de Azure pendientes** (`Microsoft.Storage`, `Microsoft.KeyVault`,
-   `Microsoft.OperationalInsights`, `microsoft.insights`, `Microsoft.Web`, `Microsoft.Sql`) —
-   operación de escritura sobre la suscripción, no ejecutada en esta fase.
-2. **Configuración temporal de acceso a Azure SQL**, si resultara necesaria para el despliegue real
+1. ~~Registro de los 6 proveedores de Azure~~ — **completado en sección 12**, con autorización
+   humana explícita previa.
+2. **Resolver el bloqueo de `what-if`** (sección 13): reintentar en una sesión posterior y/o decidir
+   si se ajusta `--result-format` en `Get-CentinelaDeploymentArguments` (cambio de código versionado,
+   requiere su propia autorización y pruebas). Sin un `what-if` posterior al registro de proveedores
+   que pase por `Get-CentinelaWhatIfAnalysis`, no se debe avanzar a `deploy-dev.ps1 -Apply`.
+3. **Configuración temporal de acceso a Azure SQL**, si resultara necesaria para el despliegue real
    o para verificación posterior (la regla `AllowAzureServices` permanece deshabilitada por
    defecto; cualquier regla de firewall que se decida crear debe tener alcance mínimo justificado).
-3. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
+4. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
    AUTORIZO_DESPLIEGUE_CENTINELA_DEV ...`), incluyendo revisión y aprobación humana del Pull Request
    de esta preparación antes de fusionar hacia `develop`.
