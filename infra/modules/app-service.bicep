@@ -7,9 +7,6 @@ param resourcePrefix string
 @description('Tags obligatorias aplicadas a los recursos.')
 param tags object
 
-@description('Cadena de conexión de Application Insights, inyectada como app setting de la Web App.')
-param applicationInsightsConnectionString string
-
 @description('Sufijo determinista de 13 caracteres (uniqueString), calculado en main.bicep, para garantizar unicidad global del nombre (subdominio *.azurewebsites.net).')
 param uniqueSuffix string
 
@@ -39,12 +36,6 @@ resource webApp 'Microsoft.Web/sites@2024-11-01' = {
       linuxFxVersion: 'DOTNETCORE|10.0'
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
-      appSettings: [
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: applicationInsightsConnectionString
-        }
-      ]
     }
   }
 }

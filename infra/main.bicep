@@ -109,6 +109,15 @@ module keyVaultModule 'modules/key-vault.bicep' = {
   }
 }
 
+// appServiceModule NO recibe ningun output de monitoringModule (Correccion short-circuit what-if,
+// Fase 04): un parametro derivado de un modulo aun no desplegado (monitoringModule.outputs.*)
+// impide que el motor de what-if de Azure evalue completamente el modulo dependiente, y lo excluye
+// por completo del arreglo de cambios devuelto (confirmado empiricamente: el what-if reportaba
+// solo 7 de los 9 recursos aprobados, faltando exactamente Microsoft.Web/serverfarms y
+// Microsoft.Web/sites, pese a que az deployment sub validate aprobaba la plantilla completa). La
+// conexion entre el backend y Application Insights queda diferida al despliegue posterior de la
+// aplicacion (cuando ambos recursos ya existen realmente), con su propia validacion y autorizacion
+// — ver seccion de documentacion del reporte de evidencia.
 module appServiceModule 'modules/app-service.bicep' = {
   name: 'appServiceDeployment'
   scope: resourceGroup(resourceGroupName)
@@ -118,7 +127,6 @@ module appServiceModule 'modules/app-service.bicep' = {
     resourcePrefix: resourcePrefix
     tags: tags
     uniqueSuffix: uniqueSuffix
-    applicationInsightsConnectionString: monitoringModule.outputs.applicationInsightsConnectionString
   }
 }
 
