@@ -126,20 +126,83 @@ public class AzureCliCommandGatewayTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_CancelledToken_RecordsCancelledAuditEntryBeforePropagating()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _gateway.ExecuteAsync(new AccountShowRequest(), cts.Token));
+
+        var record = Assert.Single(_auditSink.GetAll());
+        Assert.True(record.Allowed);
+        Assert.False(record.Success);
+        Assert.True(record.Cancelled);
+        Assert.NotEmpty(record.CorrelationId);
+        Assert.DoesNotContain(record.SanitizedArguments, a => a.Contains("Password", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RunnerThrowsBecauseAzCliMissing_RecordsFailedAuditEntryAndPropagatesException()
+    {
+        _processRunner.ResultFactory = _ => throw new System.ComponentModel.Win32Exception("No such file or directory");
+
+        await Assert.ThrowsAsync<System.ComponentModel.Win32Exception>(() => _gateway.ExecuteAsync(new BicepVersionRequest()));
+
+        var record = Assert.Single(_auditSink.GetAll());
+        Assert.True(record.Allowed);
+        Assert.False(record.Success);
+        Assert.False(record.Cancelled);
+        Assert.NotNull(record.FailureReason);
+        Assert.NotEmpty(record.CorrelationId);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RunnerThrowsUnexpectedException_RecordsFailedAuditEntryAndPropagatesException()
+    {
+        _processRunner.ResultFactory = _ => throw new InvalidOperationException("fallo inesperado del runner");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _gateway.ExecuteAsync(new AccountShowRequest()));
+
+        var record = Assert.Single(_auditSink.GetAll());
+        Assert.True(record.Allowed);
+        Assert.False(record.Success);
+        Assert.False(record.Cancelled);
+        Assert.NotNull(record.FailureReason);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FailureAuditEntry_NeverContainsSecretsFromExceptionMessage()
+    {
+        var path = FictitiousExampleBuilder.WindowsPath();
+        var guid = FictitiousExampleBuilder.Guid();
+        _processRunner.ResultFactory = _ => throw new InvalidOperationException($"fallo al ejecutar {path} con tenantId {guid}");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _gateway.ExecuteAsync(new AccountShowRequest()));
+
+        var record = Assert.Single(_auditSink.GetAll());
+        Assert.DoesNotContain("devuser", record.FailureReason);
+        Assert.DoesNotContain(guid, record.FailureReason);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_OutputContainingSecrets_IsRedactedBeforeReturning()
     {
+        var guid = FictitiousExampleBuilder.Guid();
+        var email = FictitiousExampleBuilder.Email("admin.novacasa");
+
         _processRunner.NextResult = new AzureCliRawProcessResult
         {
             ExitCode = 0,
-            StandardOutput = "tenantId: 00000000-1111-2222-3333-444444444444, contact: admin@novacasa.example.com",
+            StandardOutput = $"tenantId: {guid}, contact: {email}",
             StandardError = "AccountKey=SuperSecretValue123",
             TimedOut = false,
         };
 
         var result = await _gateway.ExecuteAsync(new AccountShowRequest());
 
-        Assert.DoesNotContain("00000000-1111-2222-3333-444444444444", result.SanitizedStandardOutput);
-        Assert.DoesNotContain("admin@novacasa.example.com", result.SanitizedStandardOutput);
+        Assert.DoesNotContain(guid, result.SanitizedStandardOutput);
+        Assert.DoesNotContain(email, result.SanitizedStandardOutput);
         Assert.DoesNotContain("SuperSecretValue123", result.SanitizedStandardError);
     }
 

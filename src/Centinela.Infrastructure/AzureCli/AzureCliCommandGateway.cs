@@ -48,7 +48,53 @@ public sealed class AzureCliCommandGateway : IAzureCliCommandGateway
 
         var sanitizedArguments = arguments.Select(AzureCliOutputRedactor.Redact).ToArray();
 
-        var raw = await _processRunner.RunAsync(arguments, DefaultTimeout, cancellationToken).ConfigureAwait(false);
+        AzureCliRawProcessResult raw;
+        try
+        {
+            raw = await _processRunner.RunAsync(arguments, DefaultTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex)
+        {
+            // El caller canceló la operación (o, con más precisión, esta rama solo se alcanza
+            // cuando la cancelación NO fue un timeout interno del runner: ese caso ya vuelve como
+            // un AzureCliRawProcessResult con TimedOut=true en vez de lanzar). Se audita antes de
+            // relanzar para que ninguna ejecución permitida por la allowlist quede sin registro,
+            // incluso cuando nunca llega a producir un AzureCliCommandResult.
+            stopwatch.Stop();
+            _auditSink.Record(new AzureCliAuditRecord
+            {
+                CorrelationId = correlationId,
+                TimestampUtc = startedAtUtc,
+                Operation = request.Operation,
+                SanitizedArguments = sanitizedArguments,
+                Allowed = true,
+                Success = false,
+                Cancelled = true,
+                FailureReason = AzureCliOutputRedactor.Redact(ex.Message),
+                Duration = stopwatch.Elapsed,
+            });
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Cubre, entre otros: el binario `az` no existe o no puede iniciarse (p. ej.
+            // Win32Exception), o cualquier otro fallo inesperado del runner. Igual que en la rama
+            // de cancelación, se audita antes de relanzar la excepción original sin modificarla.
+            stopwatch.Stop();
+            _auditSink.Record(new AzureCliAuditRecord
+            {
+                CorrelationId = correlationId,
+                TimestampUtc = startedAtUtc,
+                Operation = request.Operation,
+                SanitizedArguments = sanitizedArguments,
+                Allowed = true,
+                Success = false,
+                FailureReason = AzureCliOutputRedactor.Redact(ex.Message),
+                Duration = stopwatch.Elapsed,
+            });
+            throw;
+        }
+
         stopwatch.Stop();
 
         var result = new AzureCliCommandResult
