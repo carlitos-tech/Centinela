@@ -42,6 +42,19 @@ FullResourcePayloads tras el InternalServerError reproducible documentado con Re
       [guid]::NewGuid(), nunca un identificador real) jamas aparece en BlockReasons, Counts ni
       ResourceSummaries: Get-CentinelaWhatIfAnalysis nunca hace eco de la entrada cruda.
 
+Escenarios de diagnostics / short-circuit (Correccion short-circuit, Fase 04 — un modulo anidado
+puede quedar excluido del arreglo "changes" sin que el what-if falle; el unico rastro es un
+arreglo "diagnostics"):
+  14. Diagnostics a nivel raiz con code=NestedDeploymentShortCircuited, junto con un aparente plan
+      de 9 Create -> bloquea de todas formas, y el "message" del diagnostico (que en Azure real
+      puede incluir el nombre del modulo/recurso afectado) nunca aparece en BlockReasons: solo se
+      registran "code" y "level".
+  15. Diagnostics dentro de un elemento individual de "changes" (no a nivel raiz) con
+      code=NestedDeploymentSkippedFromInternalExpansion -> bloquea igual.
+  16. CONTROL: un arreglo "diagnostics" vacio junto con el plan aprobado de 9 Create -> no bloquea
+      (la sola presencia del campo "diagnostics" no es motivo de bloqueo, solo un codigo conocido
+      de evaluacion incompleta).
+
 Escenarios de orquestacion (Invoke-CentinelaDevPreDeploymentAndCreate), que ademas confirman que
 $RunDeploymentCreate nunca se invoca cuando el paso anterior falla:
   10. Fallo de Azure CLI en el propio what-if (el scriptblock $RunWhatIf lanza una excepcion) ->
@@ -206,6 +219,68 @@ $analysisResults += [pscustomobject]@{
     Pass     = ($redactionApprovedPass -and $redactionNeverLeaksPass)
     Approved = $redactionAnalysis.Approved
     Reasons  = $redactionBlockReasonsText
+}
+
+# ---------------------------------------------------------------------------------------------
+# Escenarios de diagnostics / short-circuit (Correccion short-circuit, Fase 04).
+# ---------------------------------------------------------------------------------------------
+#
+# Un modulo anidado puede quedar excluido del arreglo "changes" sin que el what-if falle (codigo de
+# salida 0, JSON valido) — el unico rastro es un arreglo "diagnostics" (raiz y/o por-change) con un
+# codigo como NestedDeploymentShortCircuited. Estos escenarios simulan esa respuesta real de Azure y
+# confirman que Get-CentinelaWhatIfAnalysis bloquea el plan, y que el "message" del diagnostico
+# (que en Azure real puede incluir el nombre del modulo/recurso afectado) nunca aparece en
+# BlockReasons: solo se registran "code" y "level".
+
+# 14. Diagnostics a nivel raiz con NestedDeploymentShortCircuited, plan aparente de 9 Create ->
+# bloquea pese a que el conteo de Create sea el esperado.
+$shortCircuitMessage = 'A nested deployment got short-circuited and all its resources got skipped from validation. This is due to a nested template having a parameter that was not fully evaluated.'
+$rootDiagnosticsJson = @{
+    changes     = (Get-CentinelaApprovedChanges)
+    diagnostics = @(
+        @{ code = 'NestedDeploymentShortCircuited'; level = 'Warning'; message = $shortCircuitMessage }
+    )
+} | ConvertTo-Json -Depth 6
+$rootDiagnosticsAnalysis = Get-CentinelaWhatIfAnalysis -WhatIfJson $rootDiagnosticsJson -ExpectedResourceGroupName $resourceGroupName
+$rootDiagnosticsPass = ($rootDiagnosticsAnalysis.Approved -eq $false) -and `
+    (($rootDiagnosticsAnalysis.BlockReasons -join ' | ') -match 'NestedDeploymentShortCircuited') -and `
+    (-not (($rootDiagnosticsAnalysis.BlockReasons -join ' | ').Contains($shortCircuitMessage)))
+$analysisResults += [pscustomobject]@{
+    Name     = '14. Diagnostics raiz con NestedDeploymentShortCircuited (9 Create aparentes): bloquea, nunca hace eco del message crudo'
+    Pass     = $rootDiagnosticsPass
+    Approved = $rootDiagnosticsAnalysis.Approved
+    Reasons  = ($rootDiagnosticsAnalysis.BlockReasons -join ' | ')
+}
+
+# 15. Diagnostics por-change (dentro de un elemento de "changes") con
+# NestedDeploymentSkippedFromInternalExpansion -> bloquea igual.
+$perChangeDiagnosticsChanges = @(Get-CentinelaApprovedChangesFullPayload)
+$perChangeDiagnosticsChanges[3]['diagnostics'] = @(
+    @{ code = 'NestedDeploymentSkippedFromInternalExpansion'; level = 'Warning'; message = 'When nested deployments are expanded, all its inner resources are retrieved for further validation. This process is performed in batch.' }
+)
+$perChangeDiagnosticsJson = New-CentinelaWhatIfJson -Changes $perChangeDiagnosticsChanges
+$perChangeDiagnosticsAnalysis = Get-CentinelaWhatIfAnalysis -WhatIfJson $perChangeDiagnosticsJson -ExpectedResourceGroupName $resourceGroupName
+$perChangeDiagnosticsPass = ($perChangeDiagnosticsAnalysis.Approved -eq $false) -and `
+    (($perChangeDiagnosticsAnalysis.BlockReasons -join ' | ') -match 'NestedDeploymentSkippedFromInternalExpansion')
+$analysisResults += [pscustomobject]@{
+    Name     = '15. Diagnostics por-change con NestedDeploymentSkippedFromInternalExpansion: bloquea'
+    Pass     = $perChangeDiagnosticsPass
+    Approved = $perChangeDiagnosticsAnalysis.Approved
+    Reasons  = ($perChangeDiagnosticsAnalysis.BlockReasons -join ' | ')
+}
+
+# 16. CONTROL: diagnostics presente pero vacio (arreglo sin elementos) o con un codigo no
+# relacionado (informativo) no debe bloquear el plan aprobado de 9 Create.
+$benignDiagnosticsJson = @{
+    changes     = (Get-CentinelaApprovedChanges)
+    diagnostics = @()
+} | ConvertTo-Json -Depth 6
+$benignDiagnosticsAnalysis = Get-CentinelaWhatIfAnalysis -WhatIfJson $benignDiagnosticsJson -ExpectedResourceGroupName $resourceGroupName
+$analysisResults += [pscustomobject]@{
+    Name     = '16. CONTROL: diagnostics vacio con 9 Create aprobados: no bloquea'
+    Pass     = ($benignDiagnosticsAnalysis.Approved -eq $true)
+    Approved = $benignDiagnosticsAnalysis.Approved
+    Reasons  = ($benignDiagnosticsAnalysis.BlockReasons -join ' | ')
 }
 
 # ---------------------------------------------------------------------------------------------

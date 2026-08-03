@@ -40,9 +40,24 @@ nueva aprobacion humana.
 
 Al ser puras (reciben el JSON de what-if como string, no ejecutan `az`), estas funciones se prueban
 exhaustivamente con what-if simulado (ver infra/scripts/tests/Test-WhatIfPlanApproval.ps1).
+
+Correccion short-circuit (Fase 04): un modulo anidado cuyos parametros dependen de un output de otro
+modulo aun no desplegado puede ser excluido por completo del arreglo "changes" sin que el what-if
+falle (codigo de salida 0, JSON valido). Azure CLI >= 2.75.0 / Az PowerShell >= 13.1.0 exponen esto
+mediante un arreglo "diagnostics" (a nivel raiz y/o por cambio) con codigos como
+NestedDeploymentShortCircuited o NestedDeploymentSkippedFromInternalExpansion. Estos diagnosticos
+pueden incluir en su "message" el nombre completo del modulo/recurso afectado, por lo que
+Get-CentinelaWhatIfAnalysis nunca imprime ese mensaje crudo: solo registra el "code" y "level"
+(ambos son constantes fijas de Azure, no contienen identificadores de la suscripcion) y bloquea el
+plan igual que ante cualquier otra discrepancia.
 #>
 
 $script:CentinelaExpectedResourceGroupName = 'rg-novacasa-centinela-dev'
+
+$script:CentinelaIncompleteAnalysisDiagnosticCodes = @(
+    'NestedDeploymentShortCircuited'
+    'NestedDeploymentSkippedFromInternalExpansion'
+)
 
 $script:CentinelaApprovedResourceTypes = @(
     'Microsoft.Resources/resourceGroups'
@@ -109,6 +124,28 @@ function ConvertTo-CentinelaResourceDescriptor {
     }
 }
 
+function Add-CentinelaDiagnosticsBlockReasons {
+    [CmdletBinding()]
+    param(
+        [System.Collections.Generic.List[string]]$BlockReasons,
+
+        $Diagnostics
+    )
+
+    if (-not $Diagnostics) { return }
+
+    foreach ($diagnostic in @($Diagnostics)) {
+        $code = [string]$diagnostic.code
+        if ([string]::IsNullOrWhiteSpace($code)) { continue }
+
+        if ($script:CentinelaIncompleteAnalysisDiagnosticCodes -contains $code) {
+            $level = [string]$diagnostic.level
+            if ([string]::IsNullOrWhiteSpace($level)) { $level = 'Desconocido' }
+            $BlockReasons.Add("El analisis de what-if reporto un diagnostico de evaluacion incompleta (code=$code, level=$level); el plan no puede aprobarse sin una evaluacion completa de todos los modulos.")
+        }
+    }
+}
+
 function Get-CentinelaWhatIfAnalysis {
     [CmdletBinding()]
     param(
@@ -136,7 +173,15 @@ function Get-CentinelaWhatIfAnalysis {
     }
 
     if ($parsed) {
+        if ($parsed.PSObject.Properties.Name -contains 'diagnostics') {
+            Add-CentinelaDiagnosticsBlockReasons -BlockReasons $blockReasons -Diagnostics $parsed.diagnostics
+        }
+
         foreach ($change in $parsed.changes) {
+            if ($change.PSObject.Properties.Name -contains 'diagnostics') {
+                Add-CentinelaDiagnosticsBlockReasons -BlockReasons $blockReasons -Diagnostics $change.diagnostics
+            }
+
             $changeType = [string]$change.changeType
             if ([string]::IsNullOrWhiteSpace($changeType)) { $changeType = 'Desconocido' }
             if ($counts.ContainsKey($changeType)) { $counts[$changeType]++ } else { $counts[$changeType] = 1 }
