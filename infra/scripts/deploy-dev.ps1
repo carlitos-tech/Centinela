@@ -4,27 +4,39 @@ Despliegue REAL de la infraestructura DEV de Centinela. NO SE HA EJECUTADO EN NI
 
 .DESCRIPTION
 Este script existe unicamente como preparacion de la Fase 04 (Bootstrap Azure DEV) y esta
-protegido con multiples guardas independientes en infra/scripts/lib/DeployGuard.ps1:
+protegido con multiples guardas independientes, en dos fases estrictamente ordenadas
+(infra/scripts/lib/DeployOrchestrator.ps1, infra/scripts/lib/DeployGuard.ps1,
+infra/scripts/lib/DeployWhatIfAnalysis.ps1):
 
-  1. Requiere el switch -Apply. Sin el, se bloquea antes de tocar Azure.
-  2. Requiere -ConfirmationPhrase exactamente igual a 'AUTORIZO_DESPLIEGUE_CENTINELA_DEV'.
-  3. Requiere que la suscripcion activa sea exactamente 'SuscripcionClaudeCode'.
-  4. Requiere que -Environment sea 'dev' (unico valor permitido) y -Location sea 'eastus2' o
-     'centralus' (unicas regiones documentadas en CLAUDE.md, seccion 5).
-  5. Revalida bicep build/lint + az deployment sub validate + az deployment sub what-if
-     inmediatamente antes de crear: si cualquiera de esos pasos falla (codigo de salida distinto
-     de 0, verificado por Invoke-AzCommand), el script aborta sin llegar a
-     'az deployment sub create'.
+  FASE 1 — Autorizacion (sin credenciales, sin `az deployment` alguno):
+    1. Requiere el switch -Apply. Sin el, se bloquea antes de tocar Azure.
+    2. Requiere -ConfirmationPhrase exactamente igual a 'AUTORIZO_DESPLIEGUE_CENTINELA_DEV'.
+    3. Requiere que -Environment sea 'dev' (unico valor permitido).
+    4. Requiere que -Location sea 'eastus2' o 'centralus' (unicas regiones documentadas en
+       CLAUDE.md, seccion 5).
+    5. Requiere que la suscripcion activa sea exactamente 'SuscripcionClaudeCode'.
+    6. Requiere que el Subscription ID activo coincida con la variable de entorno
+       CENTINELA_EXPECTED_SUBSCRIPTION_ID (obligatoria, sin valor predeterminado, nunca impresa).
+
+  Solo si las seis condiciones anteriores se cumplen, este script solicita interactivamente las
+  credenciales temporales de Azure SQL (nunca antes).
+
+  FASE 2 — Revalidacion y creacion (con credenciales SQL ya exportadas temporalmente):
+    7. Revalida bicep build/lint + `az deployment sub validate`.
+    8. Ejecuta `az deployment sub what-if` (salida capturada como JSON, nunca impresa cruda).
+    9. Analiza el plan de what-if (Correccion 3): exige exactamente los 9 recursos aprobados, todos
+       Create, ninguno RBAC/regla de firewall SQL/Foundry/AI Search, ninguno fuera de
+       rg-novacasa-centinela-dev. Un codigo de salida 0 en what-if NO es suficiente por si solo.
+       Muestra siempre un resumen sanitizado del resultado (aprobado o bloqueado).
+    10. Solo si el plan es aprobado, ejecuta `az deployment sub create`.
 
 Este script NUNCA usa `--confirm-with-what-if`: el what-if y el create son pasos explicitamente
-separados, para que el what-if de este mismo script (y el de infra/scripts/what-if.ps1) siga
-siendo una operacion de solo lectura independiente de cualquier creacion real.
-
-'az deployment sub create' aparece exactamente una vez en todo este repositorio: en el
+separados. `az deployment sub create` aparece exactamente una vez en todo este repositorio: en el
 scriptblock $runDeploymentCreate mas abajo, invocado solo a traves de
-Invoke-CentinelaDevDeployment (infra/scripts/lib/DeployOrchestrator.ps1) despues de que las cinco
-guardas anteriores se cumplan. infra/scripts/tests/Test-DeployDevGuard.ps1 prueba exhaustivamente
-que ese scriptblock nunca se invoca si cualquiera de las guardas falla.
+Invoke-CentinelaDevPreDeploymentAndCreate y solo si el plan de what-if fue aprobado.
+
+Ninguna salida de este script imprime Tenant ID, Subscription ID, Object ID, credenciales ni
+cadenas de conexion; ninguna salida cruda de `az` se guarda en disco.
 
 .PARAMETER Apply
 Requerido para avanzar mas alla de las guardas. Sin este switch, el script se detiene.
@@ -36,11 +48,14 @@ Debe ser exactamente 'AUTORIZO_DESPLIEGUE_CENTINELA_DEV'.
 Entorno objetivo. Unico valor permitido: 'dev'.
 
 .PARAMETER Location
-Region objetivo. Valores permitidos: 'eastus2' (principal), 'centralus' (contingencia).
+Region objetivo (region del deployment Y region real de los recursos, ver Correccion 2). Valores
+permitidos: 'eastus2' (principal), 'centralus' (contingencia).
 
 .NOTES
 Requiere aprobacion humana explicita adicional antes de cualquier ejecucion real (ver CLAUDE.md,
-secciones 5 y 11, y la autorizacion de Fase 04 que dio origen a este archivo).
+secciones 5 y 11, y las autorizaciones de Fase 04 que dieron origen a este archivo). Requiere
+ademas que CENTINELA_EXPECTED_SUBSCRIPTION_ID este definida en el entorno local antes de invocar
+este script; el script nunca la define ni le asigna un valor predeterminado.
 #>
 
 [CmdletBinding()]
@@ -59,47 +74,76 @@ param(
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'lib/AzExec.ps1')
+. (Join-Path $PSScriptRoot 'lib/DeployArguments.ps1')
 . (Join-Path $PSScriptRoot 'lib/DeployOrchestrator.ps1')
+. (Join-Path $PSScriptRoot 'lib/DeploySanitizedOutput.ps1')
 
 $infraDir = Resolve-Path (Join-Path $PSScriptRoot '..')
 $mainTemplate = Join-Path $infraDir 'main.bicep'
 $paramsFile = Join-Path $infraDir 'dev.bicepparam'
 
+# CENTINELA_EXPECTED_SUBSCRIPTION_ID se lee tal cual desde el entorno local: nunca tiene un valor
+# predeterminado aqui ni en ningun otro archivo versionado, y su valor nunca se imprime (ni aqui,
+# ni en DeployGuard.ps1, ni en ningun mensaje de excepcion).
+$expectedSubscriptionId = $env:CENTINELA_EXPECTED_SUBSCRIPTION_ID
+
+# Consulta independiente de la suscripcion activa: dos llamadas separadas (nombre e ID), ninguna
+# de las cuales deriva el valor ESPERADO (ese viene unicamente del entorno, arriba).
 $getActiveSubscriptionName = {
     (az account show --query name -o tsv).Trim()
 }
+$getActiveSubscriptionId = {
+    (az account show --query id -o tsv).Trim()
+}
 
-$runPreDeploymentChecks = {
+# ---------------------------------------------------------------------------------------------
+# FASE 1: autorizacion. Ninguna credencial SQL se solicita todavia.
+# ---------------------------------------------------------------------------------------------
+try {
+    Invoke-CentinelaDeploymentAuthorizationGuard -Apply:$Apply -ConfirmationPhrase $ConfirmationPhrase `
+        -Environment $Environment -Location $Location `
+        -GetActiveSubscriptionName $getActiveSubscriptionName `
+        -GetActiveSubscriptionId $getActiveSubscriptionId `
+        -ExpectedSubscriptionId $expectedSubscriptionId
+}
+catch {
+    Write-Error "Despliegue de Centinela DEV bloqueado: $($_.Exception.Message)"
+    exit 1
+}
+
+# ---------------------------------------------------------------------------------------------
+# FASE 2: las seis guardas de autorizacion pasaron. Recien ahora se solicitan credenciales SQL.
+# ---------------------------------------------------------------------------------------------
+$runBicepValidate = {
     Invoke-AzCommand -StepName 'az bicep version' -Arguments @('bicep', 'version')
     Invoke-AzCommand -StepName 'az bicep build (main.bicep)' -Arguments @('bicep', 'build', '--file', $mainTemplate)
     Invoke-AzCommand -StepName 'az bicep lint (main.bicep)' -Arguments @('bicep', 'lint', '--file', $mainTemplate)
-    Invoke-AzCommand -StepName 'az deployment sub validate (revalidacion previa al apply)' -Arguments @(
-        'deployment', 'sub', 'validate',
-        '--location', $Location,
-        '--template-file', $mainTemplate,
-        '--parameters', $paramsFile,
-        '--only-show-errors'
-    )
-    Invoke-AzCommand -StepName 'az deployment sub what-if (revalidacion previa al apply)' -Arguments @(
-        'deployment', 'sub', 'what-if',
-        '--location', $Location,
-        '--template-file', $mainTemplate,
-        '--parameters', $paramsFile,
-        '--only-show-errors'
-    )
+
+    $validateArgs = Get-CentinelaDeploymentArguments -Operation 'validate' -Location $Location `
+        -TemplateFile $mainTemplate -ParametersFile $paramsFile
+    $validateJson = Invoke-AzCommandCaptureJson -StepName 'az deployment sub validate (revalidacion previa al apply)' -Arguments $validateArgs
+    (Format-CentinelaValidateSummary -ValidateJson $validateJson) | ForEach-Object { Write-Host $_ }
 }
 
-# Unico punto del repositorio donde se invoca 'az deployment sub create'. No se ejecuta con
-# --confirm-with-what-if: what-if (arriba) y create (aqui) son pasos separados y explicitos.
+$runWhatIf = {
+    $whatIfArgs = Get-CentinelaDeploymentArguments -Operation 'what-if' -Location $Location `
+        -TemplateFile $mainTemplate -ParametersFile $paramsFile
+    Invoke-AzCommandCaptureJson -StepName 'az deployment sub what-if (revalidacion previa al apply)' -Arguments $whatIfArgs
+}
+
+$reportWhatIfAnalysis = {
+    param($Analysis)
+    (Format-CentinelaWhatIfSummary -Analysis $Analysis) | ForEach-Object { Write-Host $_ }
+}
+
+# Unico punto del repositorio donde se invoca 'az deployment sub create'. Solo se alcanza si el
+# analisis del what-if (Correccion 3) aprobo el plan.
 $runDeploymentCreate = {
-    Invoke-AzCommand -StepName 'az deployment sub create (DESPLIEGUE REAL)' -Arguments @(
-        'deployment', 'sub', 'create',
-        '--name', "centinela-dev-$(Get-Date -Format 'yyyyMMddHHmmss')",
-        '--location', $Location,
-        '--template-file', $mainTemplate,
-        '--parameters', $paramsFile,
-        '--only-show-errors'
-    )
+    $deploymentName = "centinela-dev-$(Get-Date -Format 'yyyyMMddHHmmss')"
+    $createArgs = Get-CentinelaDeploymentArguments -Operation 'create' -Location $Location `
+        -TemplateFile $mainTemplate -ParametersFile $paramsFile -DeploymentName $deploymentName
+    $createJson = Invoke-AzCommandCaptureJson -StepName 'az deployment sub create (DESPLIEGUE REAL)' -Arguments $createArgs
+    (Format-CentinelaCreateSummary -CreateJson $createJson) | ForEach-Object { Write-Host $_ }
 }
 
 try {
@@ -115,11 +159,9 @@ try {
             $env:CENTINELA_SQL_ADMIN_LOGIN = $sqlAdminLogin
             $env:CENTINELA_SQL_ADMIN_PASSWORD = $sqlPasswordPlain
 
-            Invoke-CentinelaDevDeployment -Apply:$Apply -ConfirmationPhrase $ConfirmationPhrase `
-                -Environment $Environment -Location $Location `
-                -GetActiveSubscriptionName $getActiveSubscriptionName `
-                -RunPreDeploymentChecks $runPreDeploymentChecks `
-                -RunDeploymentCreate $runDeploymentCreate
+            Invoke-CentinelaDevPreDeploymentAndCreate -RunBicepValidate $runBicepValidate `
+                -RunWhatIf $runWhatIf -ReportWhatIfAnalysis $reportWhatIfAnalysis `
+                -RunDeploymentCreate $runDeploymentCreate | Out-Null
         }
         finally {
             $sqlPasswordPlain = $null
