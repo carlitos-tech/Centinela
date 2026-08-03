@@ -20,6 +20,13 @@
   funcional profunda no pudo determinarse (el mensaje disponible era un simple redireccionamiento
   sin información de causa) y, por regla explícita, la clasificación se registra como `UNKNOWN` —
   no se reintentó ni se usó `--debug` para evitarlo.
+- **Actualización (alineación de la evidencia de validación):** 2026-08-03 — ver sección 16: se
+  corrige una ambigüedad de este reporte que podía leerse como si el bloqueo vigente fuera el del
+  `what-if` de la sección 14. **El fallo vigente ocurrió en `az deployment sub validate`, no en
+  `what-if`**, y los `provisioningState: Succeeded` de las secciones 10 y 13 corresponden a una
+  **versión anterior de la plantilla**, por lo que no avalan la plantilla actual. La corrección
+  short-circuit quedó versionada y probada; la opción de desplegar directamente fue **rechazada por
+  decisión humana**.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -465,7 +472,9 @@ un solo intento y, si bloquea, detenerse para decisión humana) con `FullResourc
   ninguna condición (`if (...)`), y que dentro de `app-service.bicep` los recursos
   `Microsoft.Web/serverfarms` (`appServicePlan`) y `Microsoft.Web/sites` (`webApp`) tampoco tienen
   ninguna condición — ambos se declaran incondicionalmente. `az deployment sub validate` confirmó
-  `provisioningState=Succeeded` para la plantilla completa, incluidos esos dos recursos. La
+  `provisioningState=Succeeded` para la plantilla completa, incluidos esos dos recursos (**salvedad
+  añadida después: ese `Succeeded` corresponde a la versión de la plantilla vigente en ese momento,
+  anterior a la corrección short-circuit; no avala la plantilla actual — ver sección 16**). La
   plantilla, por tanto, sí los incluye en el plan real de Bicep; su ausencia está en la respuesta
   del motor de `what-if` de Azure, no en el código de Centinela ni en `Get-CentinelaWhatIfAnalysis`
   (que se comportó correctamente: bloqueó una desviación real del plan aprobado, tal como está
@@ -583,15 +592,18 @@ efímeras de Azure SQL (variables de entorno, exportadas y eliminadas en `finall
 3. Abrir un ticket de soporte de Azure adjuntando el `tracking id`/`correlation id` de este intento
    (disponibles solo en la sesión de desarrollo, nunca guardados en el repositorio) para que Azure
    identifique la causa exacta sin necesidad de más intentos locales.
-4. Aceptar la incógnita y proceder directamente con `deploy-dev.ps1 -Apply` bajo aprobación humana
-   explícita, dado que `az deployment sub validate` **si aprobó** la plantilla completa en las
-   secciones 10 y 13 (`provisioningState: Succeeded`) — el bloqueo documentado es específicamente
-   del motor de análisis de `what-if`/de este intento diagnóstico puntual, no necesariamente del
-   despliegue real. Riesgo: se perdería la guarda de verificación pre-`create` basada en `what-if`
-   para esos dos recursos específicos en este intento.
+4. ~~Aceptar la incógnita y proceder directamente con `deploy-dev.ps1 -Apply`~~ — **RECHAZADA por
+   decisión humana explícita** (autorización `[centinela-fase-04-validacion-especifica-serverfarm]`;
+   ver sección 16). El argumento que sostenía esta opción — que `az deployment sub validate` "sí
+   aprobó" la plantilla en las secciones 10 y 13 — **no es válido**: esos `provisioningState:
+   Succeeded` corresponden a una **versión anterior de la plantilla**, no a la vigente, y el
+   `validate` más reciente (sección 15) **falló**. Desplegar aceptando la incógnita habría
+   significado renunciar a la única verificación pre-`create` disponible sobre la plantilla actual.
 
 Ninguna de estas cuatro opciones fue ejecutada en esta tarea. Se requiere decisión humana explícita
-sobre cuál seguir (ver "Pendiente de aprobación humana explícita").
+sobre cuál seguir (ver "Pendiente de aprobación humana explícita"). **Resolución posterior:** la
+decisión humana registrada en la sección 16 rechazó la opción 4 y autorizó una vía distinta a las
+cuatro listadas — una validación específica y no destructiva vía `Microsoft.Web/validate`.
 
 **Archivos nuevos de esta tarea:** `infra/scripts/lib/DeploySanitizedError.ps1` (captura/saneamiento
 de errores de Azure CLI, descenso recursivo por `details[]`, `Get-CentinelaDeepestErrorDetail`,
@@ -612,8 +624,82 @@ Nota: `Test-WhatIfPlanApproval.ps1` y `Test-BicepCompiledResources.ps1` (junto c
 presentes en `infra/main.bicep`, `infra/modules/app-service.bicep` y
 `infra/scripts/lib/DeployWhatIfAnalysis.ps1`) corresponden a trabajo de una tarea previa
 (corrección short-circuit relacionada con el bloqueo de la sección 14), preservado sin modificar y
-**aún sin commit** en el árbol de trabajo — esta tarea de diagnóstico únicamente confirmó que no
-introdujo una regresión sobre ellos, sin tocarlos ni incluirlos en sus propios commits.
+—en el momento de escribir esta sección— **aún sin commit** en el árbol de trabajo; esta tarea de
+diagnóstico únicamente confirmó que no introdujo una regresión sobre ellos, sin tocarlos ni
+incluirlos en sus propios commits. **Actualización:** esos cinco archivos ya están versionados en
+dos commits separados — ver sección 16.
+
+## 16. Alineación de la evidencia de validación y versionado de la corrección short-circuit (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-validacion-especifica-serverfarm]`. Esta sección corrige
+una ambigüedad real de las secciones 14 y 15 —que podían leerse como si el bloqueo vigente siguiera
+siendo el del `what-if`— y deja versionada la corrección short-circuit que hasta ahora vivía sin
+commit en el árbol de trabajo.
+
+### 16.1 Siete aclaraciones exigidas por la decisión humana
+
+| # | Aclaración | Estado |
+|---|---|---|
+| 1 | **El fallo vigente ocurrió en `az deployment sub validate`**, no en `what-if`. El último `what-if` ejecutado es el de la sección 14 (código de salida `0`, JSON válido, bloqueado por el analizador local al reportar solo 7 de 9 Create). El fallo de la sección 15 —`InvalidTemplateDeployment` / `ValidationForResourceFailed`, código de salida distinto de cero— es de `validate`, un comando distinto y una falla distinta. | Corregido |
+| 2 | **No se ejecutó `what-if` durante el diagnóstico más reciente** (sección 15). Estaba expresamente prohibido por su autorización y no se ejecutó ni una vez. | Confirmado |
+| 3 | **El `validate` previamente aprobado corresponde a una versión anterior de la plantilla.** Los `provisioningState: Succeeded` registrados en las secciones 10 y 13 se obtuvieron sobre la plantilla tal como estaba entonces —cuando `appServiceModule` aún recibía `monitoringModule.outputs.applicationInsightsConnectionString` y la Web App aún declaraba el app setting `APPLICATIONINSIGHTS_CONNECTION_STRING`. **Esos resultados no avalan la plantilla vigente** y no pueden citarse como evidencia de que la plantilla actual sea desplegable. | Corregido |
+| 4 | **La opción de desplegar directamente aceptando la incógnita está RECHAZADA por decisión humana explícita** (opción 4 de la sección 15). No se ejecutará `deploy-dev.ps1 -Apply`, ni `az deployment sub create`, ni `az group create`. | Rechazada |
+| 5 | **El error vigente sigue clasificado como `UNKNOWN`.** Esta sección no aporta información nueva sobre su causa funcional: la clasificación de la sección 15 se mantiene sin cambios. | Sin cambios |
+| 6 | **La siguiente verificación autorizada es una llamada específica y no destructiva a la operación `Microsoft.Web/validate`**, exclusivamente para el App Service Plan (`type: ServerFarm`, `location: eastus2`, SKU `B1`, `capacity: 1`, workers Linux). Una sola petición, sin reintentos, sin `--debug`, sin `--verbose`, sin crear el Resource Group. | Autorizada, pendiente |
+| 7 | **Los cambios short-circuit ya están versionados y probados** — ver 16.2 y 16.3. | Completado |
+
+**No autorizado en esta tarea** (registrado por completitud): despliegue directo; `deploy-dev.ps1
+-Apply`; `az deployment sub create`; `az group create`; crear/modificar/eliminar recursos de Azure;
+un nuevo `az deployment sub validate`; un nuevo `what-if`; `--debug`/`--verbose`; registrar
+proveedores adicionales; cambios de RBAC; fusionar el PR #8; cerrar el Issue #7; iniciar la Fase 05.
+
+### 16.2 Versionado de la corrección short-circuit — dos commits separados
+
+| Commit | Archivos (exactamente estos, ningún otro) |
+|---|---|
+| `fix(infra): remove App Insights bootstrap dependency` | `infra/main.bicep`, `infra/modules/app-service.bicep` |
+| `fix(infra): block incomplete nested what-if expansion` | `infra/scripts/lib/DeployWhatIfAnalysis.ps1`, `infra/scripts/tests/Test-WhatIfPlanApproval.ps1`, `infra/scripts/tests/Test-BicepCompiledResources.ps1` |
+
+**Contenido verificado antes de commitear** (los seis puntos exigidos por la autorización):
+
+1. `appServiceModule` ya **no** recibe `monitoringModule.outputs.applicationInsightsConnectionString`;
+   sus únicos parámetros son `location`, `resourcePrefix`, `tags` y `uniqueSuffix`.
+2. `APPLICATIONINSIGHTS_CONNECTION_STRING` **no aparece** en ningún archivo versionado del bootstrap
+   (las únicas coincidencias en el repositorio son las aserciones de la prueba que comprueban
+   precisamente su ausencia).
+3. El módulo de App Service **no depende** del deployment de monitoreo: `dependsOn:
+   [resourceGroupModule]`, confirmado también sobre la plantilla ARM compilada
+   (`[subscriptionResourceId('Microsoft.Resources/deployments', 'resourceGroupDeployment')]`).
+4. `Get-CentinelaWhatIfAnalysis` **bloquea** los diagnósticos `NestedDeploymentShortCircuited` y
+   `NestedDeploymentSkippedFromInternalExpansion`, tanto a nivel raíz como dentro de un cambio
+   individual.
+5. Los `message` crudos de `diagnostics` **nunca se registran**: solo se conservan `code` y `level`,
+   ambos constantes fijas de Azure sin identificadores de la suscripción. Verificado con una
+   aserción explícita (escenario 14).
+6. La prueba de recursos compilados comprueba los **nueve recursos incondicionales** esperados (10
+   recursos físicos totales, de los cuales exactamente uno —la regla de firewall de Azure SQL— es
+   condicional y está deshabilitada por defecto).
+
+### 16.3 Regresión completa ejecutada antes de versionar
+
+| Validación | Resultado |
+|---|---|
+| `dotnet build -c Release` | Éxito — **0 advertencias, 0 errores** |
+| `dotnet test -c Release` | **149/149 OK** (133 unit + 16 integración) |
+| `infra/scripts/tests/Test-WhatIfPlanApproval.ps1` | **18/18 OK** (código de salida 0) |
+| `infra/scripts/tests/Test-BicepCompiledResources.ps1` | **9/9 OK** (código de salida 0) |
+| `infra/scripts/tests/Test-SanitizedErrorReport.ps1` | **19/19 OK** (código de salida 0) — 19 aserciones sobre los 17 escenarios numerados, incluidas las sub-aserciones `14b` y `16b`; el conteo «18/18» citado en la sección 15 correspondía a la numeración usada entonces, no a una pérdida de cobertura |
+| `az bicep build --file infra/main.bicep` | Éxito (código de salida 0) |
+| `az bicep lint` (los 7 archivos `.bicep`) | **7/7 sin hallazgos** |
+| Escaneo de seguridad local (réplica exacta de los 4 escaneos del workflow de gobierno) | Sin coincidencias de secretos, rutas locales, correos ni GUID sin enmascarar |
+| Workflow de gobierno (GitHub Actions) tras el push | **Verde** |
+
+`Test-BicepCompiledResources.ps1` solo invoca `az bicep build --stdout` (compilación local); ninguna
+de las tres suites PowerShell contacta recursos de Azure.
+
+### 16.4 Resultado de la validación específica `Microsoft.Web/validate`
+
+Pendiente de ejecución en el momento de escribir esta sección — ver sección 17.
 
 ## Confirmaciones
 
@@ -661,17 +747,18 @@ introdujo una regresión sobre ellos, sin tocarlos ni incluirlos en sus propios 
 5. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
    AUTORIZO_DESPLIEGUE_CENTINELA_DEV ...`), incluyendo revisión y aprobación humana del Pull Request
    de esta preparación antes de fusionar hacia `develop`.
-6. **Nuevo (sección 15):** el diagnóstico saneado del bloqueo de la sección 14 terminó en
-   `Classification: UNKNOWN` — la causa funcional real nunca se obtuvo, porque el único intento
-   diagnóstico autorizado recibió un mensaje que era solo un redireccionamiento no informativo, y no
-   estaba autorizado reintentar. Se requiere decisión humana explícita sobre cuál de las 4 opciones
-   de la sección 15 seguir (segunda ejecución diagnóstica con el analizador ya corregido,
-   investigación en el portal de Azure, ticket de soporte, o proceder directamente a
-   `deploy-dev.ps1 -Apply` aceptando la incógnita) antes de continuar.
-7. **Commit pendiente de una tarea previa:** `infra/main.bicep`, `infra/modules/app-service.bicep`,
-   `infra/scripts/lib/DeployWhatIfAnalysis.ps1` y `infra/scripts/tests/Test-WhatIfPlanApproval.ps1`
-   contienen la corrección short-circuit (documentada en sección 14/comentarios de `main.bicep`) y
-   `infra/scripts/tests/Test-BicepCompiledResources.ps1` es un archivo nuevo relacionado — todos
-   permanecen sin commit en el árbol de trabajo. Esta tarea de diagnóstico no los tocó ni los
-   incluyó en sus propios commits; se preservan intactos a la espera de que el usuario decida si
-   deben commitearse por separado.
+6. ~~**Nuevo (sección 15):** decidir cuál de las 4 opciones de la sección 15 seguir~~ — **decidido
+   en la sección 16**: la opción 4 (desplegar directamente aceptando la incógnita) fue **rechazada**
+   y se autorizó una vía distinta, la validación específica no destructiva vía `Microsoft.Web/validate`.
+   La clasificación `UNKNOWN` de la sección 15 **se mantiene**: la causa funcional real del fallo de
+   `az deployment sub validate` sigue sin determinarse.
+7. ~~**Commit pendiente de una tarea previa:** los cinco archivos de la corrección short-circuit~~ —
+   **completado en la sección 16.2**: versionados en dos commits separados
+   (`fix(infra): remove App Insights bootstrap dependency` y
+   `fix(infra): block incomplete nested what-if expansion`), con la regresión completa en verde y el
+   workflow de gobierno en verde.
+8. **Nuevo (sección 16):** una vez conocido el resultado de la validación específica
+   `Microsoft.Web/validate`, se requiere decisión humana explícita antes de cualquier paso siguiente.
+   En particular, **un nuevo `az deployment sub validate` sobre el código ya versionado requiere
+   autorización humana previa** y no se ejecutará por iniciativa del agente, aunque
+   `Microsoft.Web/validate` responda satisfactoriamente.
