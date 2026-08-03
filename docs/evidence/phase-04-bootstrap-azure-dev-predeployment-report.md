@@ -27,6 +27,13 @@
   **versión anterior de la plantilla**, por lo que no avalan la plantilla actual. La corrección
   short-circuit quedó versionada y probada; la opción de desplegar directamente fue **rechazada por
   decisión humana**.
+- **Actualización (validación específica del App Service Plan):** 2026-08-03 — ver sección 17: una
+  única petición no destructiva a `Microsoft.Web/validate` respondió `status: Success`, confirmando
+  que un App Service Plan Linux **B1, capacidad 1, en East US 2** es una configuración **válida**
+  para esta suscripción, sin crear ningún recurso y sin que el Resource Group exista. Esto descarta
+  SKU/región/cuota/tipo de worker/restricción de suscripción como causa, pero **no explica el fallo
+  de `az deployment sub validate`** de la sección 15, que sigue clasificado como `UNKNOWN`. No se
+  ejecutó `validate`, ni `what-if`, ni despliegue alguno tras este resultado.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -699,7 +706,116 @@ de las tres suites PowerShell contacta recursos de Azure.
 
 ### 16.4 Resultado de la validación específica `Microsoft.Web/validate`
 
-Pendiente de ejecución en el momento de escribir esta sección — ver sección 17.
+Ejecutada — ver sección 17.
+
+## 17. Validación específica `Microsoft.Web/validate` del App Service Plan — **PASS** (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-validacion-especifica-serverfarm]`, Paso 6. Objetivo:
+determinar si el App Service Plan Linux B1 **puede** crearse en East US 2 para esta suscripción, sin
+crear ningún recurso y sin depender del mensaje genérico que devuelve `az deployment sub validate`.
+
+### 17.1 Preverificaciones ejecutadas antes de la petición
+
+| # | Verificación | Resultado |
+|---|---|---|
+| 1 | Azure CLI autenticado (llamada real de solo lectura, sin imprimir identificadores) | Sesión válida, suscripción `Enabled` |
+| 2 | La suscripción activa coincide con `CENTINELA_EXPECTED_SUBSCRIPTION_ID` | Coincide (comparación en memoria; ningún valor impreso) |
+| 3 | `az group exists --name rg-novacasa-centinela-dev` | `false` — el Resource Group **no existe** |
+| 4 | Estado de registro de `Microsoft.Web` | `Registered` |
+
+No se ejecutó `az login` automáticamente en ningún momento (no fue necesario: la sesión estaba
+activa; de haber estado vencida, la instrucción era detenerse y solicitar intervención humana).
+
+### 17.2 La petición — una sola, no destructiva
+
+| Aspecto | Valor |
+|---|---|
+| Operación | `POST .../resourceGroups/rg-novacasa-centinela-dev/providers/Microsoft.Web/validate` |
+| `api-version` | `2024-11-01` — la **misma familia de API** que usa el recurso Bicep (`Microsoft.Web/serverfarms@2024-11-01`) |
+| `type` | `ServerFarm` |
+| `name` | `plan-novacasa-centinela-dev` (el nombre exacto que define la plantilla: `plan-${resourcePrefix}`) |
+| `location` | `eastus2` |
+| `properties.skuName` | `B1` |
+| `properties.capacity` | `1` |
+| `properties.needLinuxWorkers` | `true` |
+| `properties.isSpot` | `false` |
+
+El Subscription ID **nunca pasó por el script ni se imprimió**: la URI se envió con el marcador
+`{subscriptionId}`, que Azure CLI expande internamente. Sin `--debug`, sin `--verbose` (la función
+de captura los bloquea por diseño y lanza una excepción si se pasan), sin reintentos, sin crear
+temporalmente el Resource Group, sin guardar la respuesta cruda en el repositorio. `stdout` y
+`stderr` se capturaron en memoria y se pasaron por el saneador antes de mostrarse.
+
+### 17.3 Resultado saneado
+
+```text
+EXITCODE=0
+STDERR vacío
+
+Respuesta (saneada):
+{
+  "error": null,
+  "status": "Success"
+}
+```
+
+**VALIDACIÓN ESPECÍFICA: PASS.** Azure confirma que un App Service Plan Linux B1 con capacidad 1 en
+East US 2, con el nombre exacto de la plantilla, es una **configuración válida para esta
+suscripción**. Esto descarta como causa del bloqueo: SKU no disponible, región no disponible, cuota
+o capacidad insuficiente, tipo de worker inválido y restricción de suscripción sobre este SKU.
+
+Dos observaciones necesarias para no sobreinterpretar el resultado:
+
+- **No fue el escenario C.** La operación respondió `Success` **sin que el Resource Group exista**;
+  no devolvió `ResourceGroupNotFound` ni exigió su existencia. No se creó el Resource Group en
+  ningún momento (confirmado antes y después: `az group exists` → `false` en ambos casos).
+- **`Classification=UNKNOWN` en la salida del saneador no indica un error.** Esa función está
+  construida para interpretar *errores* de Azure Resource Manager; al recibir una respuesta exitosa
+  sin `error`, no tiene ningún código que clasificar y devuelve su valor por defecto. La
+  clasificación `UNKNOWN` **vigente** sigue siendo la de la sección 15, referida al fallo de
+  `az deployment sub validate` — que esta validación específica **no explica ni resuelve**.
+
+### 17.4 Qué queda abierto
+
+`Microsoft.Web/validate` valida el App Service Plan **de forma aislada**. El fallo de la sección 15
+ocurrió en `az deployment sub validate`, es decir, sobre el **despliegue completo** (siete recursos
+adicionales, ámbito de suscripción, creación del Resource Group incluida) y, además, sobre una
+plantilla que **ya cambió** desde entonces por la corrección short-circuit de la sección 16.2. Por
+tanto este PASS **no** demuestra que el despliegue completo vaya a validar.
+
+Conforme a la instrucción explícita del resultado A de la autorización, y pese a que la respuesta
+fue satisfactoria: **no se ejecutó `az deployment sub validate`, no se ejecutó `what-if` y no se
+desplegó nada.** El siguiente paso requiere **autorización humana explícita**: una única nueva
+ejecución de `az deployment sub validate` sobre el código ya versionado (`f1c5ddb`), que es la
+primera vez que la plantilla corregida se validaría de extremo a extremo.
+
+### 17.5 Confirmaciones de esta tarea
+
+| Confirmación | Estado |
+|---|---|
+| Recursos de Azure creados, modificados o eliminados | **Cero** |
+| `az group exists --name rg-novacasa-centinela-dev` (antes y después) | `false` en ambos casos |
+| `az deployment sub create` / `az group create` / `deploy-dev.ps1 -Apply` | No ejecutados |
+| `az deployment sub validate` en esta tarea | **No ejecutado** |
+| `az deployment sub what-if` en esta tarea | **No ejecutado** |
+| `--debug` / `--verbose` | No usados (bloqueados por diseño en la función de captura) |
+| Peticiones a `Microsoft.Web/validate` | **Exactamente una**, sin reintentos |
+| Proveedores adicionales registrados | Ninguno |
+| Cambios de RBAC | Ninguno |
+| Subscription ID / Tenant ID / Object ID / correos / rutas locales impresos o guardados | Ninguno |
+| PR #8 | **OPEN, DRAFT, sin fusionar** |
+| Issue #7 | **Abierto** |
+| Fase 05 | No iniciada |
+
+**Commits de esta tarea** (rama `feat/phase-04-bootstrap-azure-dev`, sin tocar `main` ni `develop`):
+
+| Commit | Archivos |
+|---|---|
+| `1cec84c` — `fix(infra): remove App Insights bootstrap dependency` | `infra/main.bicep`, `infra/modules/app-service.bicep` |
+| `bb1cc64` — `fix(infra): block incomplete nested what-if expansion` | `infra/scripts/lib/DeployWhatIfAnalysis.ps1`, `infra/scripts/tests/Test-WhatIfPlanApproval.ps1`, `infra/scripts/tests/Test-BicepCompiledResources.ps1` |
+| `f1c5ddb` — `docs(infra): align Phase 04 validation evidence` | `docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md` |
+
+El workflow de gobierno quedó **verde** en los tres commits.
 
 ## Confirmaciones
 
@@ -757,8 +873,12 @@ Pendiente de ejecución en el momento de escribir esta sección — ver sección
    (`fix(infra): remove App Insights bootstrap dependency` y
    `fix(infra): block incomplete nested what-if expansion`), con la regresión completa en verde y el
    workflow de gobierno en verde.
-8. **Nuevo (sección 16):** una vez conocido el resultado de la validación específica
-   `Microsoft.Web/validate`, se requiere decisión humana explícita antes de cualquier paso siguiente.
-   En particular, **un nuevo `az deployment sub validate` sobre el código ya versionado requiere
-   autorización humana previa** y no se ejecutará por iniciativa del agente, aunque
-   `Microsoft.Web/validate` responda satisfactoriamente.
+8. **Nuevo — decisión humana pendiente (secciones 16 y 17):** la validación específica
+   `Microsoft.Web/validate` dio **PASS** (App Service Plan Linux B1, capacidad 1, East US 2 es una
+   configuración válida para esta suscripción). Ese PASS **no** explica el fallo de
+   `az deployment sub validate` de la sección 15, que sigue clasificado como `UNKNOWN`, ni demuestra
+   que el despliegue completo vaya a validar. **Se requiere autorización humana explícita para una
+   única nueva ejecución de `az deployment sub validate` sobre el código ya versionado (`f1c5ddb`)**
+   — sería la primera validación de extremo a extremo de la plantilla corregida. Conforme a la
+   instrucción explícita de la autorización, no se ejecutó por iniciativa del agente pese al
+   resultado satisfactorio, y tampoco se ejecutó `what-if` ni ningún despliegue.
