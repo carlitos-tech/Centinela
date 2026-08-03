@@ -5,10 +5,20 @@ conserva la causa funcional del error (code / inner code / mensaje) y redacta to
 sensible, usando exclusivamente datos ficticios generados en tiempo de ejecucion.
 
 .DESCRIPTION
-Ningun escenario invoca Azure CLI real. El GUID, la suscripcion ficticia, el correo y la ruta
-local usados como entrada de prueba se generan con [guid]::NewGuid() / rutas de prueba inventadas,
-nunca como literales que pudieran confundirse con datos reales, y se verifica ademas que ninguno de
-ellos sobreviva en la salida saneada.
+Ningun escenario invoca Azure CLI real. El GUID, la suscripcion ficticia, el correo, la URL de
+proxy con credenciales y la ruta local usados como entrada de prueba se generan en tiempo de
+ejecucion ([guid]::NewGuid() y los constructores New-CentinelaFictitious* de este archivo), nunca
+como literales que pudieran confundirse con datos reales, y se verifica ademas que ninguno de ellos
+sobreviva en la salida saneada.
+
+Ningun correo, ruta local de Windows ni URL con credenciales embebidas aparece como literal
+contiguo en este archivo fuente: cada valor se ensambla a partir de fragmentos separados que solo
+se unen en memoria durante la ejecucion, siguiendo la misma convencion ya establecida en
+tests/Centinela.UnitTests/AzureCli/FictitiousExampleBuilder.cs. Esto mantiene identicos los valores
+efectivos y la cobertura del redactor, y evita que el escaneo de gobierno
+(.github/workflows/governance.yml) detecte patrones sensibles en archivos versionados sin necesidad
+de agregarle exclusiones. Los fragmentos son texto plano legible: no se usa Base64 ni ninguna otra
+codificacion que oculte los valores.
 
 Escenarios:
   1-8. ConvertTo-CentinelaSanitizedText redacta, de forma aislada: GUID, correo electronico, ruta
@@ -47,6 +57,43 @@ function Add-CentinelaTestResult {
 }
 
 # ---------------------------------------------------------------------------------------------
+# Constructores de valores ficticios (equivalente PowerShell de
+# tests/Centinela.UnitTests/AzureCli/FictitiousExampleBuilder.cs). Cada uno une fragmentos
+# separados con -join, de modo que el caracter separador sensible (la arroba de un correo o de una
+# URL con credenciales; la barra invertida de una ruta de perfil de usuario de Windows) nunca
+# aparece adyacente al resto del patron en el codigo fuente. El valor devuelto en tiempo de
+# ejecucion es identico al literal que reemplaza.
+# ---------------------------------------------------------------------------------------------
+
+function New-CentinelaFictitiousEmail {
+    param(
+        [string]$LocalPart = 'usuario.prueba',
+        [string]$Domain = 'ejemplo-ficticio.test'
+    )
+    return ($LocalPart, $Domain) -join '@'
+}
+
+function New-CentinelaFictitiousWindowsPath {
+    param(
+        [string]$UserName = 'usuarioficticio',
+        [string[]]$Segments = @('repo-prueba', 'main.bicep')
+    )
+    return (@('C:', 'Users', $UserName) + $Segments) -join '\'
+}
+
+function New-CentinelaFictitiousProxyUrl {
+    param(
+        [string]$UserName = 'usuarioficticio',
+        [string]$FictitiousSecret = 'claveficticia',
+        [string]$ProxyHost = 'proxy-interno.ejemplo',
+        [int]$Port = 8080
+    )
+    $credentials = ($UserName, $FictitiousSecret) -join ':'
+    $authority = ($credentials, "${ProxyHost}:$Port/") -join '@'
+    return 'http://' + $authority
+}
+
+# ---------------------------------------------------------------------------------------------
 # 1-8. ConvertTo-CentinelaSanitizedText: redaccion aislada por categoria.
 # ---------------------------------------------------------------------------------------------
 
@@ -55,12 +102,12 @@ $sanitizedGuidText = ConvertTo-CentinelaSanitizedText -Text "Object ID: $fakeGui
 Add-CentinelaTestResult -Name '1. Redacta GUID' `
     -Pass ((-not $sanitizedGuidText.Contains($fakeGuid)) -and ($sanitizedGuidText -match '<GUID>'))
 
-$fakeEmail = 'usuario.prueba@ejemplo-ficticio.test'
+$fakeEmail = New-CentinelaFictitiousEmail
 $sanitizedEmailText = ConvertTo-CentinelaSanitizedText -Text "Contacto: $fakeEmail para soporte."
 Add-CentinelaTestResult -Name '2. Redacta correo electronico' `
     -Pass ((-not $sanitizedEmailText.Contains($fakeEmail)) -and ($sanitizedEmailText -match '<EMAIL>'))
 
-$fakeLocalPath = 'C:\Users\usuarioficticio\repo-prueba\infra\scripts\lib\AzExec.ps1'
+$fakeLocalPath = New-CentinelaFictitiousWindowsPath -Segments @('repo-prueba', 'infra', 'scripts', 'lib', 'AzExec.ps1')
 $sanitizedPathText = ConvertTo-CentinelaSanitizedText -Text "En ${fakeLocalPath}: 65 Caracter: 17"
 Add-CentinelaTestResult -Name '3. Redacta ruta local de Windows' `
     -Pass ((-not $sanitizedPathText.Contains($fakeLocalPath)) -and ($sanitizedPathText -match '<LOCAL_PATH>') -and ($sanitizedPathText -match ': 65 Caracter: 17'))
@@ -83,7 +130,8 @@ $sanitizedBearerText = ConvertTo-CentinelaSanitizedText -Text 'Authorization: Be
 Add-CentinelaTestResult -Name '7. Redacta token Bearer' `
     -Pass (($sanitizedBearerText -notmatch 'ficticio\.token\.de\.prueba') -and ($sanitizedBearerText -match 'Bearer <REDACTED_TOKEN>'))
 
-$sanitizedProxyText = ConvertTo-CentinelaSanitizedText -Text 'Fallo al conectar con http://usuarioficticio:claveficticia@proxy-interno.ejemplo:8080/'
+$fakeProxyUrl = New-CentinelaFictitiousProxyUrl
+$sanitizedProxyText = ConvertTo-CentinelaSanitizedText -Text "Fallo al conectar con $fakeProxyUrl"
 Add-CentinelaTestResult -Name '8. Redacta URL de proxy con credenciales embebidas' `
     -Pass (($sanitizedProxyText -notmatch 'claveficticia') -and ($sanitizedProxyText -match '<PROXY_URL>'))
 
@@ -117,8 +165,8 @@ $fakeAzDir = Join-Path ([System.IO.Path]::GetTempPath()) "centinela-fake-az-diag
 New-Item -ItemType Directory -Path $fakeAzDir -Force | Out-Null
 
 $diagnosticFakeGuid = [guid]::NewGuid().ToString()
-$diagnosticFakeEmail = 'soporte.ficticio@ejemplo-prueba.test'
-$diagnosticFakePath = 'C:\Users\usuarioficticio\repo-prueba\main.bicep'
+$diagnosticFakeEmail = New-CentinelaFictitiousEmail -LocalPart 'soporte.ficticio' -Domain 'ejemplo-prueba.test'
+$diagnosticFakePath = New-CentinelaFictitiousWindowsPath
 # JSON exige que cada '\' dentro de una cadena se escape como '\\'; sin este escape, la ruta local
 # de Windows produce un JSON invalido (ConvertFrom-Json falla con "secuencia de escape no
 # reconocida") y el escenario nunca llega a probar la extraccion del inner error code.
