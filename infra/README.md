@@ -1,9 +1,12 @@
-# Infraestructura DEV — Centinela (Fase 03)
+# Infraestructura DEV — Centinela (Fase 03, endurecida y preparada para despliegue en Fase 04)
 
 Plantillas Bicep de la infraestructura declarativa de DEV. **Ningún recurso de esta carpeta ha
-sido desplegado.** Esta fase valida localmente (`bicep build`/`lint`, `az deployment sub
-validate`/`what-if`) sin aplicar ningún cambio. El despliegue real corresponde a una fase futura,
-sujeta a aprobación humana explícita adicional (ver `CLAUDE.md`, secciones 5 y 11).
+sido desplegado.** Se valida localmente (`bicep build`/`lint`, `az deployment sub
+validate`/`what-if`) sin aplicar ningún cambio real. La Fase 04 agregó, además, un script de
+despliegue real protegido (`scripts/deploy-dev.ps1`, con guardas probadas y **nunca ejecutado**);
+el despliegue real efectivo requiere aprobación humana explícita adicional (ver `CLAUDE.md`,
+secciones 5 y 11, y
+[`docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md`](../docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md)).
 
 ## Estructura
 
@@ -21,7 +24,11 @@ infra/
 │   └── sql.bicep                 # Azure SQL logical server + database (Basic)
 ├── scripts/
 │   ├── validate.ps1 / validate.sh   # bicep build/lint + az deployment sub validate
-│   └── what-if.ps1 / what-if.sh     # az deployment sub what-if
+│   ├── what-if.ps1 / what-if.sh     # az deployment sub what-if
+│   ├── deploy-dev.ps1                # Despliegue real, protegido con guardas — nunca ejecutado
+│   ├── lib/DeployGuard.ps1           # Lógica de autorización pura (5 condiciones)
+│   ├── lib/DeployOrchestrator.ps1    # Orquestador testeable (scriptblocks inyectados)
+│   └── tests/Test-DeployDevGuard.ps1 # Pruebas de guarda (6/6 PASS, sin Azure CLI real)
 ├── cost/
 │   └── dev-cost-estimate.md      # Estimación de costos mensual, con fuentes citadas
 └── README.md
@@ -32,11 +39,16 @@ infra/
 | Recurso | Propósito | Notas de costo |
 |---|---|---|
 | Resource Group | Contenedor de todos los recursos de DEV | Sin costo |
-| Storage Account (StorageV2, Standard_LRS) | Almacenamiento general; hosting de sitio estático se configura en plano de datos, fuera de este Bicep | Bajo costo |
-| Key Vault (Standard, RBAC) | Gestión de secretos; sin ninguna asignación de rol RBAC (se difiere a Fase 04) | Bajo costo |
+| Storage Account (StorageV2, Standard_LRS) | Almacenamiento general; `allowBlobPublicAccess=false` (endurecido en Fase 04); hosting de sitio estático se configura en plano de datos, fuera de este Bicep | Bajo costo |
+| Key Vault (Standard, RBAC) | Gestión de secretos; sin ninguna asignación de rol RBAC (se sigue difiriendo) | Bajo costo |
 | Log Analytics + Application Insights | Observabilidad | Nivel gratuito hasta 5 GB/mes |
 | App Service Plan (Linux, B1) + Web App | Hosting de la API .NET | Ver `cost/dev-cost-estimate.md` |
-| Azure SQL Server + Database (Basic) | Base de datos futura | Ver `cost/dev-cost-estimate.md` |
+| Azure SQL Server + Database (Basic) | Base de datos futura; regla de firewall `AllowAzureServices` convertida en opt-in (`enableSqlAllowAzureServicesRule`, `false` por defecto en Fase 04) — no se crea a menos que se habilite explícitamente | Ver `cost/dev-cost-estimate.md` |
+
+Storage Account, Key Vault, Web App y el servidor lógico de Azure SQL usan un sufijo
+determinista globalmente único (`uniqueString(subscription().id, resourceGroupName)`, agregado en
+Fase 04) para evitar colisiones de nombre en Azure; Resource Group, App Service Plan, Log
+Analytics y Application Insights conservan nombres legibles.
 
 **Microsoft Foundry** y **Azure AI Search** están documentados como componentes opcionales
 deshabilitados (`enableFoundry = false`, `enableAiSearch = false` en `dev.bicepparam`): no se
@@ -46,7 +58,7 @@ declara ningún recurso activo para ellos en esta fase.
 
 `environment=dev`, `primaryLocation=eastus2`, `fallbackLocation=centralus`,
 `projectName=centinela`, `companyName=novacasa`, `monthlyBudgetUsd=50`, `retentionDays=30`,
-`enableFoundry=false`, `enableAiSearch=false`.
+`enableFoundry=false`, `enableAiSearch=false`, `enableSqlAllowAzureServicesRule=false`.
 
 `sqlAdministratorLogin` y `sqlAdministratorPassword` se leen en `dev.bicepparam` mediante
 `readEnvironmentVariable('CENTINELA_SQL_ADMIN_LOGIN'/'CENTINELA_SQL_ADMIN_PASSWORD')` — un archivo
