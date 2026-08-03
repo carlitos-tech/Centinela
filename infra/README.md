@@ -3,10 +3,18 @@
 Plantillas Bicep de la infraestructura declarativa de DEV. **Ningún recurso de esta carpeta ha
 sido desplegado.** Se valida localmente (`bicep build`/`lint`, `az deployment sub
 validate`/`what-if`) sin aplicar ningún cambio real. La Fase 04 agregó, además, un script de
-despliegue real protegido (`scripts/deploy-dev.ps1`, con guardas probadas y **nunca ejecutado**);
-el despliegue real efectivo requiere aprobación humana explícita adicional (ver `CLAUDE.md`,
-secciones 5 y 11, y
+despliegue real protegido (`scripts/deploy-dev.ps1`), cuyas guardas y flujo de despliegue se
+corrigieron en una segunda iteración: seis condiciones de autorización en dos fases (ninguna
+credencial de Azure SQL se solicita antes de superarlas), la región de `-Location` ahora controla
+también la región real de los recursos (`primaryLocation`), y el plan de `what-if` se analiza
+recurso por recurso antes de permitir `create` (un código de salida 0 en `what-if` ya no es
+suficiente por sí solo). El script sigue **nunca ejecutado**; el despliegue real efectivo requiere
+aprobación humana explícita adicional (ver `CLAUDE.md`, secciones 5 y 11, y
 [`docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md`](../docs/evidence/phase-04-bootstrap-azure-dev-predeployment-report.md)).
+
+Requiere además que la variable de entorno `CENTINELA_EXPECTED_SUBSCRIPTION_ID` esté definida en el
+entorno local antes de invocar `deploy-dev.ps1` — no tiene valor predeterminado en ningún archivo
+versionado y su valor nunca se imprime.
 
 ## Estructura
 
@@ -25,10 +33,16 @@ infra/
 ├── scripts/
 │   ├── validate.ps1 / validate.sh   # bicep build/lint + az deployment sub validate
 │   ├── what-if.ps1 / what-if.sh     # az deployment sub what-if
-│   ├── deploy-dev.ps1                # Despliegue real, protegido con guardas — nunca ejecutado
-│   ├── lib/DeployGuard.ps1           # Lógica de autorización pura (5 condiciones)
-│   ├── lib/DeployOrchestrator.ps1    # Orquestador testeable (scriptblocks inyectados)
-│   └── tests/Test-DeployDevGuard.ps1 # Pruebas de guarda (6/6 PASS, sin Azure CLI real)
+│   ├── deploy-dev.ps1                    # Despliegue real, protegido con guardas — nunca ejecutado
+│   ├── lib/DeployGuard.ps1               # Lógica de autorización pura (6 condiciones, incl. CENTINELA_EXPECTED_SUBSCRIPTION_ID)
+│   ├── lib/DeployArguments.ps1           # Argumentos de az deployment sub validate|what-if|create (region real de los recursos)
+│   ├── lib/DeployWhatIfAnalysis.ps1      # Análisis obligatorio del plan de what-if (bloquea si no son exactamente los 9 recursos aprobados)
+│   ├── lib/DeploySanitizedOutput.ps1     # Formato de salida sanitizado (sin Tenant/Subscription/Object ID)
+│   ├── lib/AzExec.ps1                    # Ejecución de `az` con captura en memoria (sin disco, sin `2>&1`)
+│   ├── lib/DeployOrchestrator.ps1        # Orquestador testeable en dos fases (autorización → credenciales → validate/what-if/create)
+│   ├── tests/Test-DeployDevGuard.ps1     # Pruebas de guarda (8/8 PASS, sin Azure CLI real)
+│   ├── tests/Test-DeployArguments.ps1    # Pruebas de región real de los recursos (4/4 PASS)
+│   └── tests/Test-WhatIfPlanApproval.ps1 # Pruebas de análisis del what-if (11/11 PASS)
 ├── cost/
 │   └── dev-cost-estimate.md      # Estimación de costos mensual, con fuentes citadas
 └── README.md
