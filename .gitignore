@@ -56,5 +56,9 @@ Thumbs.db
 *.tfstate.*
 .terraform/
 
+# Bicep: artefacto ARM JSON compilado por "az bicep build" (regenerable a
+# partir de infra/main.bicep, que es la fuente de verdad versionada).
+infra/main.json
+
 # Azure
 *.PublishSettings
