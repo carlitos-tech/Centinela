@@ -51,6 +51,14 @@
   --validation-level Provider` sobre el HEAD `d4ee1ea`, y por primera vez el resultado fue
   **`provisioningState: Succeeded`**, confirmando que `SubscriptionIsOverQuotaForSku` (sección 18)
   quedó resuelto. No se ejecutó `what-if` ni ningún despliegue.
+- **Actualización (what-if post-cuota B1 — ERROR de proceso, no de Azure):** 2026-08-03 — ver
+  sección 21: con autorización humana explícita para **una única** ejecución de
+  `az deployment sub what-if`, la llamada a Azure se ejecutó exactamente una vez y terminó con
+  código de salida 0 y un JSON estructuralmente válido, pero el análisis obligatorio con las
+  guardas versionadas (`Get-CentinelaWhatIfAnalysis`) no pudo completarse porque la salida capturada
+  quedó únicamente en memoria de un proceso de PowerShell que finalizó antes de ejecutar el análisis,
+  sin persistirse en disco. **Clasificación: C (ERROR de proceso/herramienta).** No se reintentó
+  `what-if` por estar expresamente prohibido un segundo intento.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -1223,6 +1231,117 @@ de extremo a extremo sobre la plantilla vigente pasó por primera vez. Conforme 
 se ejecutó `what-if` por iniciativa propia. Se requiere **autorización humana explícita** para una
 única ejecución de `what-if` como siguiente paso de verificación pre-despliegue.
 
+## 21. Intento de what-if post-cuota B1 — **ERROR de proceso** (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-what-if-despues-cuota-b1]`, acotada a **una única**
+ejecución de `az deployment sub what-if` sobre el HEAD `b243c5f`, usando exclusivamente los scripts
+y guardas versionados. Prohibidos expresamente: un segundo `what-if`, `deployment create`,
+`group create`, `deploy-dev.ps1 -Apply`, crear/modificar/eliminar recursos, reglas de firewall SQL,
+secretos, cambios de RBAC, región, SKU o plantilla, fusionar el PR #8, cerrar el Issue #7 e iniciar
+la Fase 05.
+
+### 21.1 Paso 1 — Precondiciones (8/8 OK)
+
+| Verificación | Resultado |
+|---|---|
+| Rama | `feat/phase-04-bootstrap-azure-dev` |
+| HEAD local | `b243c5f` |
+| HEAD remoto | `b243c5f` (coincide) |
+| Árbol de trabajo | Limpio |
+| Workflow de gobernanza sobre `b243c5f` | ✅ `success` |
+| PR #8 | `OPEN`, `DRAFT` |
+| Issue #7 | `OPEN` |
+| Diff `d4ee1ea..b243c5f` | Solo el reporte de evidencia (139 líneas insertadas, 0 en código/Bicep) |
+| Azure CLI autenticado (lectura real) | ✅ |
+| Suscripción coincide con `CENTINELA_EXPECTED_SUBSCRIPTION_ID` | ✅ (valor nunca impreso) |
+| `B1` límite / uso en East US 2 | **1** / **0** |
+| `rg-novacasa-centinela-dev` existe | `false` |
+
+### 21.2 Paso 2 — Pruebas locales
+
+| Suite | Resultado |
+|---|---|
+| `dotnet build -c Release` | ✅ 0 errores, 0 advertencias |
+| `dotnet test -c Release` | ✅ 149/149 correctas (133 unitarias + 16 de integración) |
+| `az bicep build` | ✅ 0 errores |
+| `az bicep lint` | ✅ 0 advertencias |
+| `Test-DeployArguments.ps1` | ✅ PASS |
+| `Test-WhatIfPlanApproval.ps1` | ✅ PASS |
+| `Test-DeployDevGuard.ps1` | ✅ PASS |
+| `Test-AzExecFailureHandling.ps1` | ✅ PASS |
+| `Test-BicepCompiledResources.ps1` | ✅ PASS |
+| `Test-SanitizedErrorReport.ps1` | ✅ PASS |
+
+### 21.3 Paso 3 — Variables efímeras
+
+Credenciales SQL completamente ficticias fijadas en el proceso mediante el mismo mecanismo
+versionado (`infra/scripts/validate.ps1`), nunca impresas ni guardadas en archivo. Confirmado tras
+la ejecución: `login=False`, `password=False` (ambas ausentes del entorno).
+
+### 21.4 Paso 4 — Ejecución única del what-if
+
+Comando lógico ejecutado, **exactamente una vez**, mediante `Get-CentinelaDeploymentArguments
+-Operation 'what-if'` y `Invoke-AzCommandCaptureDiagnostic` (sin `--debug` ni `--verbose`):
+
+```text
+az deployment sub what-if --location eastus2
+  --template-file infra/main.bicep
+  --parameters infra/dev.bicepparam
+  --parameters primaryLocation=eastus2
+  --only-show-errors --result-format FullResourcePayloads
+  --no-pretty-print --output json
+```
+
+| Campo | Resultado |
+|---|---|
+| Código de salida | **0** |
+| Longitud de la salida capturada | 11 692 caracteres (JSON, en memoria) |
+
+### 21.5 Paso 5 — Análisis del resultado: **no completado**
+
+`Invoke-AzCommandCaptureDiagnostic` devuelve la salida únicamente en memoria del proceso que la
+invoca (no escribe ningún archivo). La salida de esta ejecución se asignó a una variable de sesión
+en una invocación de PowerShell que finalizó antes de ejecutar `Get-CentinelaWhatIfAnalysis` sobre
+ella, y las variables de PowerShell no persisten entre invocaciones separadas de la herramienta. El
+JSON capturado quedó irrecuperable sin una nueva llamada a Azure. Por lo tanto, el análisis con las
+guardas versionadas (conteo Create/Modify/Delete, diagnósticos de expansión incompleta, tipos de
+recursos, RBAC, reglas de firewall SQL, Foundry/AI Search) **no pudo ejecutarse** sobre el resultado
+de esta ejecución.
+
+### 21.6 Paso 6 — Clasificación
+
+**C — ERROR.** No es un error de Azure CLI, de sesión ni de JSON inválido: la llamada a Azure
+concluyó con código 0 y produjo una salida bien formada. Es un **error de proceso/herramienta** en
+la ejecución de este diagnóstico (falta de persistencia de la salida entre la ejecución y el
+análisis), no evidencia de ningún problema en la plantilla, la cuota o la suscripción.
+
+### 21.7 Verificación posterior
+
+| Confirmación | Estado |
+|---|---|
+| `az group exists --name rg-novacasa-centinela-dev` | `false` |
+| Recursos de Azure creados | **Cero** |
+| Árbol de trabajo Git | Limpio |
+| Segundo `what-if` | **No ejecutado** |
+| `deployment create` / `group create` / `deploy-dev.ps1 -Apply` | **No ejecutados** |
+| Bicep, scripts o pruebas modificados | Ninguno |
+| Región, SKU o plantilla cambiados | Ninguno |
+| RBAC, secretos, reglas de firewall SQL | Ninguno creado |
+| Subscription ID / Tenant ID / credenciales / correos / rutas locales | Ninguno impreso ni guardado |
+| PR #8 | `OPEN`, `DRAFT`, sin fusionar |
+| Issue #7 | Abierto |
+| Fase 05 | No iniciada |
+
+### 21.8 Próxima decisión humana
+
+El `az deployment sub validate --validation-level Provider` de la sección 20 sigue siendo la
+validación de extremo a extremo más reciente con resultado `Succeeded`. El `what-if` en sí **no**
+quedó analizado por las guardas de aprobación de plan. Se requiere **autorización humana explícita**
+para una nueva ejecución de `what-if` (esta sería una autorización distinta y nueva, no un
+"reintento" de la ya agotada), usando un script que capture la salida y ejecute
+`Get-CentinelaWhatIfAnalysis` dentro de la **misma** invocación de PowerShell para evitar repetir
+este error de proceso.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
@@ -1316,6 +1435,9 @@ se ejecutó `what-if` por iniciativa propia. Se requiere **autorización humana 
    ver nota de la sección 19) y una nueva validación integral autorizada dio **`Succeeded`**. El
    bloqueo de cuota queda **resuelto en la práctica**.
 
-10. **Nuevo (sección 20):** autorizar una única ejecución de `what-if` sobre la plantilla vigente,
-    ahora que `az deployment sub validate` pasó de extremo a extremo por primera vez. Ninguna
-    ejecución de `what-if` se ha realizado todavía sobre este HEAD.
+10. ~~**Nuevo (sección 20):** autorizar una única ejecución de `what-if` sobre la plantilla vigente~~
+    — **intentado en la sección 21**: la llamada a Azure se ejecutó (exit 0, JSON válido), pero el
+    análisis con las guardas versionadas no pudo completarse por un error de proceso (salida no
+    persistida entre la ejecución y el análisis). **Se requiere una nueva autorización humana
+    explícita** para repetir el `what-if` con un script que capture y analice la salida en la misma
+    invocación.
