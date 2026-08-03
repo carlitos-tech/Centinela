@@ -44,6 +44,13 @@
   vez devolvió un código interno funcional concreto: **`SubscriptionIsOverQuotaForSku`** sobre
   `Microsoft.Web/serverFarms`. La clasificación `UNKNOWN` de la sección 15 queda **resuelta** y
   reemplazada por **`QUOTA_OR_CAPACITY`**. No se creó ningún recurso.
+- **Actualización (validación integral — PASS post-aprobación de cuota):** 2026-08-03 — ver sección
+  20: la cuota de `B1` en East US 2 pasó de límite 0 a límite **1** (origen no atribuible con
+  evidencia a la solicitud rechazada de la sección 19 — ver nota de esa sección). Con autorización
+  humana explícita se ejecutó **una única vez** un nuevo `az deployment sub validate
+  --validation-level Provider` sobre el HEAD `d4ee1ea`, y por primera vez el resultado fue
+  **`provisioningState: Succeeded`**, confirmando que `SubscriptionIsOverQuotaForSku` (sección 18)
+  quedó resuelto. No se ejecutó `what-if` ni ningún despliegue.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -1091,6 +1098,131 @@ Quota API ya no ofrece camino. Se requiere **autorización humana explícita** p
 cualquier vía alternativa; **ninguna se ejecutó ni se preparó**. No se ejecutó `validate`, ni
 `what-if`, ni despliegue alguno.
 
+> **Corrección posterior (sección 20):** en una verificación diagnóstica de solo lectura
+> posterior (autorización `[centinela-fase-04-evaluar-planes-app-service]`), se constató que el
+> límite de `B1` en East US 2 es ahora **1**, con las tres solicitudes de esta sección todavía
+> registradas como `Failed` en el historial de `az quota request status list`. No hay evidencia que
+> atribuya el cambio a estas solicitudes; es más consistente con un aprovisionamiento posterior por
+> parte de Azure. La conclusión "la vía de la Azure Quota API queda **agotada**" de esta sección
+> **queda retirada**: el límite sí cambió, aunque el origen exacto no está probado. Ver sección 20
+> para la validación integral que confirma la resolución práctica del bloqueo.
+
+## 20. Validación integral post-aprobación de cuota B1 — **PASS** (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-revalidar-despues-cuota-b1]`, acotada a verificar la
+propagación de la cuota, ejecutar Bicep build/lint, ejecutar **exactamente una** nueva validación
+integral y actualizar únicamente este reporte. Prohibidos expresamente: `az quota update`/`create`,
+otro ticket de soporte, `what-if`, `deployment sub create`, `deploy-dev.ps1 -Apply`, crear/modificar/
+eliminar recursos, crear Resource Groups, cambiar Bicep/scripts/pruebas, cambiar SKU o región,
+registrar proveedores, cambiar RBAC, crear secretos, fusionar el PR #8, cerrar el Issue #7 e iniciar
+la Fase 05.
+
+### 20.1 Estado del repositorio
+
+| Verificación | Resultado |
+|---|---|
+| Rama | `feat/phase-04-bootstrap-azure-dev` |
+| HEAD local | `d4ee1ea` |
+| HEAD remoto | `d4ee1ea` (coincide) |
+| Árbol de trabajo | Limpio |
+| Workflow de gobernanza en `d4ee1ea` | ✅ `success` |
+| PR #8 | `OPEN`, `DRAFT` |
+| Issue #7 | `OPEN` |
+
+`d4ee1ea` es un commit exclusivamente documental posterior a `0a05b5b` (el HEAD validado en la
+sección 18); los archivos Bicep no cambiaron desde entonces.
+
+### 20.2 Cuota verificada
+
+| Dato | Valor |
+|---|---|
+| Proveedor | `Microsoft.Web` |
+| Región | East US 2 (`eastus2`) |
+| Cuota | `B1` |
+| Límite anterior (sección 18) | **0** |
+| Límite actual | **1** |
+| `isQuotaApplicable` | `true` |
+| Uso actual | **0** |
+| `Microsoft.Web` | `Registered` |
+| `Microsoft.Quota` | `Registered` |
+
+### 20.3 Precondiciones
+
+| Verificación | Resultado |
+|---|---|
+| Azure CLI autenticado (lectura real) | ✅ cuenta `Enabled` |
+| Suscripción coincide con `CENTINELA_EXPECTED_SUBSCRIPTION_ID` | ✅ (valor nunca impreso) |
+| `rg-novacasa-centinela-dev` existe | `false` |
+| Recursos existentes | **0** |
+| Deployments existentes | **0** |
+| App Service Plans creados manualmente | **0** |
+
+### 20.4 Validación local (Bicep)
+
+| Comando | Resultado |
+|---|---|
+| `az bicep build --file infra/main.bicep` | ✅ 0 errores |
+| `az bicep lint --file infra/main.bicep` | ✅ 0 advertencias |
+
+Plantilla compilada confirmada: `sku.name: B1`, `sku.tier: Basic`, `kind: linux`,
+`properties.reserved: true`, `linuxFxVersion: DOTNETCORE|10.0`, región resuelta a `eastus2`
+(`primaryLocation`). Ningún archivo fue modificado.
+
+### 20.5 Ejecución única de `az deployment sub validate`
+
+Variables SQL efímeras y completamente ficticias fijadas en el proceso mediante el mismo mecanismo
+versionado de `infra/scripts/validate.ps1` (nunca impresas, nunca guardadas en archivo, eliminadas
+en `finally`); confirmado tras la ejecución: `login=False`, `password=False` (ambas ausentes del
+entorno).
+
+Comando lógico ejecutado, **exactamente una vez**, sin `--debug` ni `--verbose`:
+
+```text
+az deployment sub validate --location eastus2
+  --template-file infra/main.bicep
+  --parameters infra/dev.bicepparam
+  --parameters primaryLocation=eastus2
+  --validation-level Provider --only-show-errors --output json
+```
+
+| Campo | Resultado |
+|---|---|
+| Código de salida | `0` |
+| `provisioningState` | **`Succeeded`** |
+| `error` | `null` |
+| Recursos validados (`validatedResources`) | **15** |
+
+**VALIDACIÓN INTEGRAL POST-CUOTA: PASS.** La cuota `B1` aprobada resolvió la causa raíz de la
+sección 18 (`SubscriptionIsOverQuotaForSku` sobre `Microsoft.Web/serverFarms`).
+
+### 20.6 Verificación posterior
+
+| Confirmación | Estado |
+|---|---|
+| `az group exists --name rg-novacasa-centinela-dev` | `false` |
+| Recursos de Azure creados | **Cero** |
+| Grupos de recursos | **Cero** |
+| Deployments registrados | **Cero** |
+| `what-if` | **No ejecutado** |
+| `deployment sub create` / `deploy-dev.ps1 -Apply` | **No ejecutados** |
+| Bicep, scripts o pruebas modificados | Ninguno |
+| SKU o región cambiados | Ninguno |
+| Proveedores registrados en esta tarea | Ninguno |
+| Cambios de RBAC | Ninguno |
+| Secretos creados en Azure | Ninguno |
+| `--debug` / `--verbose` | No usados |
+| Subscription ID / Tenant ID / scope completo / Request ID / número de ticket / datos personales | Ninguno impreso ni guardado |
+| PR #8 | `OPEN`, `DRAFT`, sin fusionar |
+| Issue #7 | Abierto |
+| Fase 05 | No iniciada |
+
+### 20.7 Próxima decisión humana
+
+El bloqueo de cuota de las secciones 18–19 queda **resuelto en la práctica**: la validación integral
+de extremo a extremo sobre la plantilla vigente pasó por primera vez. Conforme a la autorización, no
+se ejecutó `what-if` por iniciativa propia. Se requiere **autorización humana explícita** para una
+única ejecución de `what-if` como siguiente paso de verificación pre-despliegue.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
@@ -1180,3 +1312,10 @@ cualquier vía alternativa; **ninguna se ejecutó ni se preparó**. No se ejecut
    mediante `az quota update` y quedó **rechazada** con `QuotaNotAvailableForResource`; el límite de
    `B1` sigue en 0. La Azure Quota API ya no ofrece camino para este SKU en esta región. El bloqueo
    **sigue vigente** y la elección de vía alternativa requiere una nueva autorización humana.
+   **Actualización (sección 20):** el límite de `B1` en East US 2 pasó a **1** (origen no probado,
+   ver nota de la sección 19) y una nueva validación integral autorizada dio **`Succeeded`**. El
+   bloqueo de cuota queda **resuelto en la práctica**.
+
+10. **Nuevo (sección 20):** autorizar una única ejecución de `what-if` sobre la plantilla vigente,
+    ahora que `az deployment sub validate` pasó de extremo a extremo por primera vez. Ninguna
+    ejecución de `what-if` se ha realizado todavía sobre este HEAD.
