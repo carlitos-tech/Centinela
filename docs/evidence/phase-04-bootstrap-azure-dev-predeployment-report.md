@@ -13,6 +13,13 @@
   (los seis pasaron de `NotRegistered` a `Registered`) y se revalidó Bicep/`validate`; el `what-if`
   posterior quedó **bloqueado por un error persistente del lado de Azure**, no por un problema del
   plan — ver sección 13 para el detalle y las referencias externas.
+- **Actualización (diagnóstico saneado del preflight):** 2026-08-03 — ver sección 15: con
+  autorización humana explícita y acotada exclusivamente a diagnóstico (sin `--debug`, sin
+  reintentos, sin cambios de SKU/región/plantilla), se ejecutó **una única vez** un
+  `az deployment sub validate` adicional con captura y saneamiento de `stderr` en memoria. La causa
+  funcional profunda no pudo determinarse (el mensaje disponible era un simple redireccionamiento
+  sin información de causa) y, por regla explícita, la clasificación se registra como `UNKNOWN` —
+  no se reintentó ni se usó `--debug` para evitarlo.
 - **Alcance de este reporte:** únicamente la **preparación** del primer despliegue real de Azure DEV. **No se creó ningún recurso de Azure en esta fase.**
 
 ## Objetivo de esta etapa
@@ -472,6 +479,142 @@ un solo intento y, si bloquea, detenerse para decisión humana) con `FullResourc
 - `az group exists --name rg-novacasa-centinela-dev` → `false`, confirmado tanto antes como después
   de este intento. Cero recursos de Azure creados, modificados o eliminados en esta corrección.
 
+## 15. Diagnóstico saneado del bloqueo de `what-if` — clasificación `UNKNOWN` por diseño (2026-08-03)
+
+Autorización explícita: `[centinela-fase-04-diagnostico-app-service-preflight]`. Acotada
+exclusivamente a **diagnóstico** del bloqueo documentado en la sección 14 (faltan
+`Microsoft.Web/serverfarms` y `Microsoft.Web/sites` en el arreglo `changes[]` de `what-if`), con las
+siguientes prohibiciones expresas: sin `--debug`, sin `--verbose`, sin `what-if`, sin
+`deployment create`, sin `group create`, sin cambiar SKU/región/subscripción/versión de API, sin
+tocar RBAC ni reglas de firewall de Azure SQL, sin reintentar el `validate` diagnóstico una vez
+ejecutado (autorizado **exactamente una vez**), y sin fusionar el PR ni cerrar el Issue.
+
+**Herramienta construida para este diagnóstico** (nueva, ver "Archivos" más abajo): captura de
+`stderr` de Azure CLI en memoria (nunca `--debug`, nunca archivo temporal con salida cruda, nunca se
+imprime la respuesta antes de sanearla, `$ErrorActionPreference` restaurado en `finally`,
+`$LASTEXITCODE` siempre verificado) más una función de saneamiento que redacta GUID, Subscription
+ID, Tenant ID, Object ID, rutas `/subscriptions/...`/`/tenants/...`, correos, rutas locales de
+Windows, usuarios locales, tokens Bearer, cadenas de conexión y contraseñas — en ese orden
+específico (los tokens Bearer y las URLs de proxy se redactan **antes** que el patrón genérico de
+`clave=valor` y antes que el patrón de correo, respectivamente, porque de lo contrario esos patrones
+genéricos consumían el texto antes que las reglas específicas pudieran actuar). De un error
+estructurado de Azure Resource Manager solo se extraen: código, código interno más profundo
+(recorriendo recursivamente el arreglo anidado `details[]`), mensaje saneado y una `CodeChain`
+saneada — nunca tracking ID, correlation ID, trace ID, la respuesta HTTP completa, encabezados,
+cuerpo de la solicitud ni argumentos con secretos.
+
+**Pruebas obligatorias (18/18 OK)** en `infra/scripts/tests/Test-SanitizedErrorReport.ps1`, todas con
+datos ficticios, verifican: el código interno se preserva; el mensaje funcional saneado se preserva;
+los GUID se redactan; las rutas locales se redactan; los correos se redactan; las rutas
+`/subscriptions/...` se redactan; una llamada fallida de Azure CLI conserva un código de salida
+distinto de cero; un error nunca se interpreta como éxito; la recursión a través de niveles anidados
+de `details[]` encuentra el código más profundo real (`SkuNotAvailable` bajo
+`ValidationForResourceFailed`, con `CodeChain` completa); y — el caso que terminó siendo relevante
+para el resultado real — cuando el mensaje más profundo disponible es únicamente un
+redireccionamiento no informativo ("Check ... Details ... for more information") sin `details[]`
+anidados adicionales, la `Classification` se fuerza a `UNKNOWN` aunque exista un código interno real,
+en vez de dejar que el código genérico `InvalidTemplateDeployment` del nivel superior dispare una
+clasificación específica incorrecta.
+
+**Consultas de solo lectura ejecutadas** (sin crear ningún recurso, saneadas antes de mostrarse):
+
+| Consulta | Resultado |
+|---|---|
+| Disponibilidad del SKU `B1` (App Service Plan Linux) en East US 2 | Disponible |
+| Ubicaciones anunciadas para `Microsoft.Web/serverFarms` | East US 2 presente (entre 49 ubicaciones anunciadas en total) |
+| Estado de registro de `Microsoft.Web` | `Registered` |
+| Estado de registro de `Microsoft.Sql` | `Registered` |
+| Cuota de App Service consultable vía `az rest` (solo lectura) | No disponible por esta vía en esta suscripción — resultado aceptado como válido, tal como preveía la autorización |
+
+**El único `az deployment sub validate` diagnóstico autorizado**, ejecutado exactamente una vez con
+los mismos argumentos/plantilla/parámetros ya utilizados en las secciones 10/13/14 y credenciales
+efímeras de Azure SQL (variables de entorno, exportadas y eliminadas en `finally`, nunca impresas):
+
+- Código de salida: distinto de cero (el `validate` **falló** en esta ejecución — a diferencia de
+  las ejecuciones previas de las secciones 10 y 13, que sí habían dado `Succeeded`). El código de
+  salida no cero se verificó y respetó explícitamente: el error nunca se interpretó como éxito.
+- `Code` (nivel superior): `InvalidTemplateDeployment` (envoltorio genérico — por diseño, no se usa
+  por sí solo para clasificar).
+- `InnerCode` / código más profundo alcanzado: `ValidationForResourceFailed`.
+- Mensaje saneado del nivel más profundo alcanzado: *"Validation failed for a resource. Check
+  'Error.Details[0]' for more information."* — un redireccionamiento **no informativo**: no describe
+  la causa funcional real, solo apunta a un nivel adicional de detalle.
+- **`Classification`: `UNKNOWN`.** Aplicando la regla de la sección de pruebas anterior: un mensaje
+  que es puramente un redireccionamiento sin `details[]` anidados adicionales disponibles en la
+  respuesta capturada fuerza `UNKNOWN`, sin importar que `InvalidTemplateDeployment`/
+  `ValidationForResourceFailed` sean códigos reales.
+- **Limitación honesta reconocida:** el nivel de detalle realmente necesario para conocer la causa
+  funcional (por ejemplo, un código como `SkuNotAvailable`, `QuotaExceeded` o similar) habría estado
+  en un nivel de `details[]` más profundo que el capturado, pero **no era alcanzable sin una segunda
+  llamada real a `az deployment sub validate`**, y la autorización de esta tarea fue estrictamente
+  para **una única ejecución diagnóstica**, sin reintentos y sin `--debug`. Por lo tanto, conforme a
+  la instrucción explícita — *"si no se obtiene el inner error: no uses `--debug`, no reintentes,
+  clasifica como `UNKNOWN`, detente"* — el diagnóstico se detiene aquí, con la causa raíz real del
+  bloqueo de la sección 14 aún **genuinamente desconocida**.
+- Ningún GUID, Subscription ID, Tenant ID, Object ID, correo, ruta local, tracking ID ni correlation
+  ID fue impreso, guardado o incluido en este reporte.
+
+**Confirmado en esta tarea de diagnóstico:**
+
+- `az deployment sub what-if` **no se ejecutó** en ningún momento de esta tarea (prohibido por la
+  autorización).
+- `az group exists --name rg-novacasa-centinela-dev` → `false`. **Cero recursos de Azure creados,
+  modificados o eliminados** por esta tarea de diagnóstico.
+- No se cambió SKU, región, subscripción, versión de API, plantilla Bicep, RBAC ni reglas de
+  firewall de Azure SQL.
+- No se registró ningún proveedor adicional.
+- El `az deployment sub validate` diagnóstico se ejecutó **exactamente una vez**; no hubo
+  reintentos ni uso de `--debug`/`--verbose`.
+
+**Opciones de corrección identificadas — presentadas sin aplicar ninguna:**
+
+1. Autorizar **una segunda y última** ejecución diagnóstica de `az deployment sub validate` (ahora
+   con el analizador recursivo ya corregido en `DeploySanitizedError.ps1`, verificado con las
+   pruebas 16/16b/17), con la expectativa de que esta vez sí alcance y reporte el código más
+   profundo real si Azure lo expone en un nivel adicional de `details[]`. Riesgo: podría devolver el
+   mismo redireccionamiento no informativo otra vez, sin garantía de resolver la incógnita.
+   Requiere aprobación humana explícita antes de ejecutarse, dado que la autorización anterior era
+   estrictamente para una sola vez.
+2. Investigar directamente en el portal de Azure (Resource Health / Activity Log / soporte) el
+   detalle completo del error de validación para el recurso `Microsoft.Web/serverFarms` de esta
+   suscripción, sin pasar por `az deployment sub validate` — evita consumir otro intento
+   diagnóstico por CLI, pero requiere acceso interactivo al portal, fuera del alcance de este agente.
+   ejecutado.
+3. Abrir un ticket de soporte de Azure adjuntando el `tracking id`/`correlation id` de este intento
+   (disponibles solo en la sesión de desarrollo, nunca guardados en el repositorio) para que Azure
+   identifique la causa exacta sin necesidad de más intentos locales.
+4. Aceptar la incógnita y proceder directamente con `deploy-dev.ps1 -Apply` bajo aprobación humana
+   explícita, dado que `az deployment sub validate` **si aprobó** la plantilla completa en las
+   secciones 10 y 13 (`provisioningState: Succeeded`) — el bloqueo documentado es específicamente
+   del motor de análisis de `what-if`/de este intento diagnóstico puntual, no necesariamente del
+   despliegue real. Riesgo: se perdería la guarda de verificación pre-`create` basada en `what-if`
+   para esos dos recursos específicos en este intento.
+
+Ninguna de estas cuatro opciones fue ejecutada en esta tarea. Se requiere decisión humana explícita
+sobre cuál seguir (ver "Pendiente de aprobación humana explícita").
+
+**Archivos nuevos de esta tarea:** `infra/scripts/lib/DeploySanitizedError.ps1` (captura/saneamiento
+de errores de Azure CLI, descenso recursivo por `details[]`, `Get-CentinelaDeepestErrorDetail`,
+`Get-CentinelaSanitizedErrorReport`), `infra/scripts/tests/Test-SanitizedErrorReport.ps1` (18
+escenarios, todos con datos ficticios). Ningún archivo de una tarea anterior fue modificado por esta
+tarea de diagnóstico.
+
+**Regresión verificada (sin cambios en su comportamiento, re-ejecutadas para confirmar que los
+cambios en `DeploySanitizedError.ps1` no afectaron otras guardas):**
+
+| Suite | Resultado |
+|---|---|
+| `infra/scripts/tests/Test-SanitizedErrorReport.ps1` | **18/18 OK** (nueva) |
+| `infra/scripts/tests/Test-WhatIfPlanApproval.ps1` | 18/18 OK (sin regresión) |
+| `infra/scripts/tests/Test-BicepCompiledResources.ps1` | 9/9 OK (sin regresión) |
+
+Nota: `Test-WhatIfPlanApproval.ps1` y `Test-BicepCompiledResources.ps1` (junto con cambios ya
+presentes en `infra/main.bicep`, `infra/modules/app-service.bicep` y
+`infra/scripts/lib/DeployWhatIfAnalysis.ps1`) corresponden a trabajo de una tarea previa
+(corrección short-circuit relacionada con el bloqueo de la sección 14), preservado sin modificar y
+**aún sin commit** en el árbol de trabajo — esta tarea de diagnóstico únicamente confirmó que no
+introdujo una regresión sobre ellos, sin tocarlos ni incluirlos en sus propios commits.
+
 ## Confirmaciones
 
 - No se creó ningún recurso de Azure (confirmado con `az group exists --name
@@ -518,3 +661,17 @@ un solo intento y, si bloquea, detenerse para decisión humana) con `FullResourc
 5. **El despliegue real en Azure DEV** (`deploy-dev.ps1 -Apply -ConfirmationPhrase
    AUTORIZO_DESPLIEGUE_CENTINELA_DEV ...`), incluyendo revisión y aprobación humana del Pull Request
    de esta preparación antes de fusionar hacia `develop`.
+6. **Nuevo (sección 15):** el diagnóstico saneado del bloqueo de la sección 14 terminó en
+   `Classification: UNKNOWN` — la causa funcional real nunca se obtuvo, porque el único intento
+   diagnóstico autorizado recibió un mensaje que era solo un redireccionamiento no informativo, y no
+   estaba autorizado reintentar. Se requiere decisión humana explícita sobre cuál de las 4 opciones
+   de la sección 15 seguir (segunda ejecución diagnóstica con el analizador ya corregido,
+   investigación en el portal de Azure, ticket de soporte, o proceder directamente a
+   `deploy-dev.ps1 -Apply` aceptando la incógnita) antes de continuar.
+7. **Commit pendiente de una tarea previa:** `infra/main.bicep`, `infra/modules/app-service.bicep`,
+   `infra/scripts/lib/DeployWhatIfAnalysis.ps1` y `infra/scripts/tests/Test-WhatIfPlanApproval.ps1`
+   contienen la corrección short-circuit (documentada en sección 14/comentarios de `main.bicep`) y
+   `infra/scripts/tests/Test-BicepCompiledResources.ps1` es un archivo nuevo relacionado — todos
+   permanecen sin commit en el árbol de trabajo. Esta tarea de diagnóstico no los tocó ni los
+   incluyó en sus propios commits; se preservan intactos a la espera de que el usuario decida si
+   deben commitearse por separado.
