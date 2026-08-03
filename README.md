@@ -4,9 +4,11 @@ Plataforma multiagente de atención al cliente con inteligencia artificial, cons
 
 ## Estado del proyecto
 
-En construcción por fases. **Fase 02 — Walking skeleton local implementada y pendiente de aprobación humana** ([Pull Request #4](https://github.com/carlitos-tech/Centinela/pull/4), sin fusionar). Issue de la fase: [#3](https://github.com/carlitos-tech/Centinela/issues/3).
+En construcción por fases. **Fase 02 — Walking skeleton local implementada y pendiente de aprobación humana** ([Pull Request #4](https://github.com/carlitos-tech/Centinela/pull/4), sin fusionar). Issue de la fase: [#3](https://github.com/carlitos-tech/Centinela/issues/3). **Fase 03 — Azure CLI Command Gateway y Bicep IaC implementada y pendiente de aprobación humana** (sin fusionar). Issue de la fase: [#5](https://github.com/carlitos-tech/Centinela/issues/5).
 
 La Fase 02 entrega un recorrido completo **totalmente local**: Chat Web (Angular) → API (.NET) → `CustomerServiceOrchestrator` → `CustomerServicePlugin` → Skills → `FakeModelGateway` → catálogo/políticas ficticias de NovaCasa S.A.S. → respuesta fundamentada con citación de fuentes → traza de ejecución. **No usa Azure, no usa una base de datos real y no llama a ningún proveedor de IA real** — `FakeModelGateway` es una implementación local, determinista y sin dependencias externas de `IModelGateway`, usada como contingencia de desarrollo mientras no exista un proveedor de IA validado y autorizado (ver [ADR-003](docs/architecture/adr/ADR-003-model-gateway.md)). Detalle completo en el [reporte de evidencia de la Fase 02](docs/evidence/phase-02-walking-skeleton-report.md).
+
+La Fase 03 agrega `IAzureCliCommandGateway` (única vía permitida para ejecutar Azure CLI desde el código de Centinela, con allowlist tipada de operaciones de solo lectura/validación, auditoría y redacción automática de salida) y plantillas Bicep de DEV validadas localmente (`bicep build`/`lint`, `deployment sub validate`/`what-if`). **No se creó ningún recurso de Azure, no se registró ningún proveedor y no se ejecutó ningún `deployment ... create`.** Detalle completo en el [reporte de evidencia de la Fase 03](docs/evidence/phase-03-azure-cli-gateway-iac-report.md).
 
 ## Empresa de referencia
 
